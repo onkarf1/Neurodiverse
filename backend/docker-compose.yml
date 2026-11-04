@@ -1,0 +1,46 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    # Longer than Uvicorn's 20-second graceful shutdown, so in-flight requests can finish.
+    stop_grace_period: 25s
+    environment:
+      # Inside Docker, services reach each other by service name, not localhost.
+      DATABASE_URL: postgresql+asyncpg://goalfit:goalfit@postgres:5432/goalfit
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    environment:
+      POSTGRES_USER: goalfit
+      POSTGRES_PASSWORD: goalfit
+      POSTGRES_DB: goalfit
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goalfit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
