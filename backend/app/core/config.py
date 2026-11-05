@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     max_request_body_bytes: int = Field(default=1_048_576, gt=0)
 
     jwt_secret: SecretStr = Field(min_length=32)
+    jwt_issuer: str = "goalfit-api"
+    jwt_audience: str = "goalfit-web"
+    access_token_ttl_minutes: int = Field(default=30, ge=1, le=1440)
+    # Argon2 uses 64 MiB per hash and already runs each hash on 4 threads, so more than ~2
+    # in parallel adds memory without much speed. Extra requests wait, up to the queue limit;
+    # beyond that they fail fast instead of making every login slow.
+    password_hash_concurrency: int = Field(default=2, ge=1, le=64)
+    password_hash_queue_limit: int = Field(default=32, ge=0, le=10_000)
     database_url: SecretStr
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
 
