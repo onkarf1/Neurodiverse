@@ -34,11 +34,21 @@ docker compose up -d postgres redis
 uv run uvicorn --factory app.main:create_app --reload
 ```
 
+Health checks: `/v1/health` (process is alive, never checks dependencies) and `/v1/ready`
+(database reachable; returns 503 otherwise, so load balancers stop routing traffic). The
+readiness check uses its own connection, so a busy instance is never reported unhealthy.
+
 Interactive API docs (not served in production): http://localhost:8000/docs
 
 ## Test and check
 
+Database tests use a separate `goalfit_test` database and are skipped if Postgres isn't
+running. Set `CI` or `REQUIRE_DB_TESTS` to `true` to make that a failure instead; the CI
+workflow does this. They refuse to run against any database whose name doesn't end in `_test`.
+
 ```bash
+docker compose up -d postgres
+docker compose exec postgres createdb -U goalfit goalfit_test   # once
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app tests
@@ -59,6 +69,8 @@ app/
     log_config.py   JSON logs with request ID; Uvicorn logs routed through it
     middleware.py   Request ID and access log, security headers, body size limit
   api/v1/         Thin HTTP layer: validate input, call a service, return a response
+  api/deps.py     Shared request dependencies (currently the readiness probe)
+  db/             Engine and sessions, readiness check
 tests/            Pytest suite (tests are written before each feature)
 ```
 
@@ -74,6 +86,9 @@ and `ai/` (provider, prompts, redaction, guards).
   Exception: CORS preflight (`OPTIONS`) replies have no request ID or access-log entry,
   because CORS runs first so that error responses stay readable by the browser.
 - Access logs record method, path, status, and duration, never query strings.
+- In production, error logs keep exception types and stack traces but drop exception
+  messages, which can quote database rows (student data). The database driver also hides
+  query parameters from its error messages.
 - Request bodies over `MAX_REQUEST_BODY_BYTES` (default 1 MB) are rejected with 413.
 - Security headers on every response; production adds CSP and HSTS and disables `/docs`.
 - Production refuses to start with a wildcard CORS origin, and `APP_ENV` must be set
@@ -84,7 +99,7 @@ and `ai/` (provider, prompts, redaction, guards).
 
 ## Attribution
 
-- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings; dev tools pytest, httpx2,
-  Ruff, mypy. See `pyproject.toml` for versions.
+- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg; dev tools
+  pytest, httpx2, Ruff, mypy. See `pyproject.toml` for versions.
 - AI assistance: initial scaffolding drafted with an AI coding assistant, then reviewed,
   tested, and edited by the team. Each pull request notes where AI assistance was used.

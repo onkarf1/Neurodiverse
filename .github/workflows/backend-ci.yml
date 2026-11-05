@@ -1,0 +1,122 @@
+# Backend CI: pinned-version check, lint and tests against a real Postgres, and an image
+# build with a startup check.
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+      - ".github/scripts/**"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+      - ".github/scripts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in sync with the uv image in backend/Dockerfile (checked by the `pins` job).
+  UV_VERSION: "0.11.14"
+
+jobs:
+  pins:
+    name: Pinned versions in sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Actions are pinned to commit SHAs; Dependabot keeps them up to date.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/check-pinned-versions.sh
+
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        # Keep in sync with backend/docker-compose.yml (checked by the `pins` job).
+        # Dependabot does not update service images in workflows.
+        image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+        env:
+          POSTGRES_USER: goalfit
+          POSTGRES_PASSWORD: goalfit
+          POSTGRES_DB: goalfit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U goalfit"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://goalfit:goalfit@localhost:5432/goalfit_test
+      # Database tests must run in CI; a missing database fails the job instead of skipping.
+      REQUIRE_DB_TESTS: "true"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy app tests
+
+      - name: Test
+        run: uv run pytest
+
+  image:
+    name: Build image and check startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: docker build --tag goalfit-api:ci backend
+
+      - name: Start container and check /v1/health
+        run: |
+          docker run --detach --name api --publish 127.0.0.1:8000:8000 \
+            --env APP_ENV=production \
+            --env JWT_SECRET="$(openssl rand -base64 48)" \
+            --env DATABASE_URL=postgresql+asyncpg://unused:unused@127.0.0.1:1/unused \
+            --env CORS_ORIGINS='["https://ci.example"]' \
+            goalfit-api:ci
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/v1/health; then exit 0; fi
+            sleep 1
+          done
+          echo "API did not become healthy; container logs:"
+          docker logs api
+          exit 1
