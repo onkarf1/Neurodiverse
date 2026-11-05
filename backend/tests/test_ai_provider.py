@@ -8,7 +8,7 @@ import anyio
 import httpx2
 import pytest
 
-from app.ai.errors import AIProviderError, AIUnavailableError
+from app.ai.errors import AIProviderError, AIResponseError, AIUnavailableError
 from app.ai.provider import Message, OpenAICompatibleProvider, create_provider
 from tests.helpers import make_settings
 
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.anyio
 MESSAGES = [Message("system", "You check worksheets."), Message("user", "Worksheet text")]
 
 
-def _completion(content: str | None) -> dict[str, object]:
+def _completion(content: str | None, finish_reason: str = "stop") -> dict[str, object]:
     return {
         "id": "chatcmpl-1",
         "object": "chat.completion",
@@ -27,7 +27,7 @@ def _completion(content: str | None) -> dict[str, object]:
             {
                 "index": 0,
                 "message": {"role": "assistant", "content": content},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
             }
         ],
     }
@@ -41,6 +41,7 @@ def _provider(
         api_key="test-key",
         model="test-model",
         timeout_seconds=timeout,
+        max_output_tokens=2048,
         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
     )
 
@@ -60,13 +61,18 @@ async def test_sends_a_deterministic_chat_request_and_returns_the_reply() -> Non
     assert seen[0].headers["Authorization"] == "Bearer test-key"
     assert body["model"] == "test-model"
     assert body["temperature"] == 0
+    assert body["max_tokens"] == 2048
     assert body["messages"] == [
         {"role": "system", "content": "You check worksheets."},
         {"role": "user", "content": "Worksheet text"},
     ]
 
 
-@pytest.mark.parametrize("status", [429, 500, 502, 503], ids=["rate limited", "500", "502", "503"])
+@pytest.mark.parametrize(
+    "status",
+    [408, 409, 429, 500, 502, 503],
+    ids=["408", "409", "rate limited", "500", "502", "503"],
+)
 async def test_temporary_gateway_failures_are_unavailable(status: int) -> None:
     calls: list[int] = []
 
@@ -190,3 +196,18 @@ async def test_slow_dripping_reply_is_cut_off_by_the_overall_timeout(
         await provider.complete(MESSAGES)
 
     assert time.monotonic() - started < 2
+
+
+async def test_reply_cut_off_at_the_output_limit_is_an_error_not_a_retry() -> None:
+    # A truncated reply would fail again the same way, so it isn't worth a second call.
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=_completion('{"aligned": tr', finish_reason="length"))
+
+    with pytest.raises(AIResponseError, match="cut off"):
+        await _provider(handler).complete(MESSAGES)
+
+
+def test_output_limit_comes_from_settings() -> None:
+    provider = create_provider(make_settings(asu_air_api_key="k", ai_max_output_tokens=512))
+
+    assert provider.max_output_tokens == 512

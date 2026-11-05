@@ -14,7 +14,7 @@ from openai import (
 )
 from openai.types.chat import ChatCompletionMessageParam
 
-from app.ai.errors import AIProviderError, AIUnavailableError
+from app.ai.errors import AIProviderError, AIResponseError, AIUnavailableError
 from app.core.config import Settings
 
 _LONE_SURROGATE = re.compile(r"[\ud800-\udfff]")
@@ -50,9 +50,11 @@ class OpenAICompatibleProvider:
         api_key: str,
         model: str,
         timeout_seconds: float,
+        max_output_tokens: int = 2048,
         http_client: httpx2.AsyncClient | None = None,
     ) -> None:
         self.model = model
+        self.max_output_tokens = max_output_tokens
         self._timeout_seconds = timeout_seconds
         # max_retries=0: no hidden retries; callers decide. The time limit is enforced around
         # the whole call in complete(), so the SDK's per-read timeouts aren't relied on.
@@ -69,18 +71,29 @@ class OpenAICompatibleProvider:
             # Caps the whole call, including a reply that arrives one byte at a time.
             async with asyncio.timeout(self._timeout_seconds):
                 response = await self._client.chat.completions.create(
-                    model=self.model, messages=payload, temperature=0
+                    model=self.model,
+                    messages=payload,
+                    temperature=0,
+                    max_tokens=self.max_output_tokens,
                 )
         except (APIConnectionError, RateLimitError, InternalServerError, TimeoutError) as exc:
             # APIConnectionError also covers the SDK's own timeouts.
             raise AIUnavailableError(type(exc).__name__) from exc
         except APIStatusError as exc:
+            # 408 (timeout) and 409 (conflict) are temporary too; the SDK itself treats them as
+            # retryable.
+            if exc.status_code in (408, 409):
+                raise AIUnavailableError(f"HTTP {exc.status_code}") from exc
             raise AIProviderError(
                 f"AI gateway rejected the request (HTTP {exc.status_code})"
             ) from exc
         if not response.choices:
             return ""
-        return response.choices[0].message.content or ""
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
+            # Truncated JSON would fail the same way again, so this isn't worth a retry.
+            raise AIResponseError("AI reply was cut off at the output limit")
+        return choice.message.content or ""
 
     async def close(self) -> None:
         await self._client.close()
@@ -94,4 +107,5 @@ def create_provider(settings: Settings) -> OpenAICompatibleProvider:
         api_key=settings.asu_air_api_key.get_secret_value(),
         model=settings.ai_model,
         timeout_seconds=settings.ai_timeout_seconds,
+        max_output_tokens=settings.ai_max_output_tokens,
     )

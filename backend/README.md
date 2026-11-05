@@ -100,7 +100,7 @@ alembic/          Database migrations
 tests/            Pytest suite (tests are written before each feature)
 ```
 
-  ai/             AI provider adapter and error types
+  ai/             AI provider adapter, structured JSON output, versioned prompts
 
 ## Authentication
 
@@ -161,15 +161,23 @@ limiting (BE-3c), and password reset.
 the model in `AI_MODEL` and the key in `ASU_AIR_API_KEY`.
 
 - One provider interface, so the model or gateway can change without touching services.
-- Requests use temperature 0, no hidden retries, and a hard `AI_TIMEOUT_SECONDS` limit on the
-  whole call (default 30). Timeouts, connection failures, rate limits and gateway errors are
-  "temporarily unavailable"; a rejected request or missing key is a configuration error.
+- Requests use temperature 0, no hidden retries, a hard `AI_TIMEOUT_SECONDS` limit on the
+  whole call (default 30) and at most `AI_MAX_OUTPUT_TOKENS` in the reply (default 2048).
+  Timeouts, connection failures, 408, 409, rate limits and gateway errors are "temporarily
+  unavailable"; a rejected request or missing key is a configuration error. A reply cut off at
+  the output limit is an error, not retried.
 - Text that can't be encoded (a lone surrogate) is replaced rather than failing the request.
-- The `openai` SDK's request logging stays off, because request bodies contain student text.
+- Replies must be JSON matching a declared format. A reasoning block at the start of a reply
+  is removed, and fenced blocks are tried in order, but text inside values (such as quoted
+  code with backticks) is never changed. A reply that doesn't match is retried once with a
+  correction note, then fails; outages are never retried.
+- Prompts are versioned files in `app/ai/prompts/` (`<name>.v<version>.md`) and are never
+  edited once released. Saved AI results are to record the prompt version (planned, #8).
+- Prompts and replies are never logged, and the `openai` SDK's request logging stays off,
+  because both contain student text.
 
-**Not yet implemented:** structured JSON replies and versioned prompt files (AI-1b), removing
-personal data before AI calls and checking AI output in code (issue #7), the alignment-check
-endpoint and its prompt (issue #8).
+**Not yet implemented:** removing personal data before AI calls and checking AI output in code
+(issue #7), the alignment-check endpoint and its prompt (issue #8).
 
 ## Data model
 
