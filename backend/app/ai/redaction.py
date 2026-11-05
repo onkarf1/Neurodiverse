@@ -30,7 +30,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Only "@" and the domain; the local part is found by scanning left (see _email_start).
     # A pattern for the whole address would retry from every letter of long text without "@",
     # which is quadratic.
-    ("EMAIL", re.compile(r"@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+    ("EMAIL", re.compile(r"@[\w.-]+\.[^\W\d_]{2,}")),
     ("SSN", re.compile(r"\b\d{3}([- ])\d{2}\1\d{4}\b")),
     (
         "DATE",

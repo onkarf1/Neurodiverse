@@ -11,6 +11,7 @@ from app.ai.redaction import Redactor
     [
         ("Email maria.lopez+1@school.example today", "maria.lopez+1@school.example", "EMAIL"),
         ("Email josé.núñez@school.example today", "josé.núñez@school.example", "EMAIL"),
+        ("Contact maria@école.example", "maria@école.example", "EMAIL"),
         ("Email maria_lopez@school.example today", "maria_lopez@school.example", "EMAIL"),
         ("Call (602) 555-0142 after class", "(602) 555-0142", "PHONE"),
         ("Call 602.555.0142 after class", "602.555.0142", "PHONE"),
