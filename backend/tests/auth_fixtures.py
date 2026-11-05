@@ -40,6 +40,7 @@ class SeedUser(Protocol):
         role: UserRole = ...,
         is_active: bool = ...,
         password_hash: str | None = ...,
+        school: str = ...,
     ) -> SeededUser: ...
 
 
@@ -88,7 +89,7 @@ def clean_database(migrated_database_url: str) -> Iterator[str]:
 
 @pytest.fixture
 def seed_user(clean_database: str) -> SeedUser:
-    school_ids: list[uuid.UUID] = []
+    school_ids: dict[str, uuid.UUID] = {}
 
     def seed(
         email: str = "teacher@example.com",
@@ -96,15 +97,16 @@ def seed_user(clean_database: str) -> SeedUser:
         role: UserRole = UserRole.TEACHER,
         is_active: bool = True,
         password_hash: str | None = None,
+        school: str = "Test School",
     ) -> SeededUser:
         async def work(session: AsyncSession) -> SeededUser:
-            if not school_ids:
-                school = School(name="Test School")
-                session.add(school)
+            if school not in school_ids:
+                new_school = School(name=school)
+                session.add(new_school)
                 await session.flush()
-                school_ids.append(school.id)
+                school_ids[school] = new_school.id
             user = User(
-                school_id=school_ids[0],
+                school_id=school_ids[school],
                 email=email,
                 password_hash=password_hash or hash_password(TEST_PASSWORD),
                 role=role,
@@ -112,7 +114,7 @@ def seed_user(clean_database: str) -> SeedUser:
             )
             session.add(user)
             await session.flush()
-            return SeededUser(user.id, school_ids[0], email)
+            return SeededUser(user.id, school_ids[school], email)
 
         return run_in_database(clean_database, work)
 

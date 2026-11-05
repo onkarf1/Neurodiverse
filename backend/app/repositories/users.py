@@ -23,3 +23,18 @@ async def set_password_hash(session: AsyncSession, user_id: uuid.UUID, password_
     await session.execute(
         update(User).where(User.id == user_id).values(password_hash=password_hash)
     )
+
+
+async def list_users_in_school(
+    session: AsyncSession, school_id: uuid.UUID, *, limit: int, offset: int
+) -> list[User]:
+    """One page of a school's users, ordered by email ignoring case. Lowercased emails are
+    unique (database index), so the order is stable across pages."""
+    statement = (
+        select(User)
+        .where(User.school_id == school_id)
+        .order_by(func.lower(User.email))
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(await session.scalars(statement))

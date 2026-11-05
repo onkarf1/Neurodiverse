@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated, cast
 
 from fastapi import Depends, HTTPException, Request
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.security import InvalidTokenError, PasswordWorker, decode_access_token
 from app.db.health import DatabaseProbe
-from app.models import User
+from app.models import User, UserRole
 from app.repositories.users import get_user_by_id
 
 _bearer = HTTPBearer(auto_error=False, description="Access token from POST /v1/auth/login")
@@ -60,3 +60,18 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 PasswordWorkerDep = Annotated[PasswordWorker, Depends(get_password_worker)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_role(*allowed: UserRole) -> Callable[[User], Awaitable[User]]:
+    """Dependency factory: the signed-in user, or 403 if their role isn't allowed. Uses the user
+    reloaded on this request, so a role change takes effect on the very next request."""
+
+    async def check(user: CurrentUser) -> User:
+        if user.role not in allowed:
+            raise HTTPException(status_code=403, detail="You don't have permission to do this.")
+        return user
+
+    return check
+
+
+AdminUser = Annotated[User, Depends(require_role(UserRole.ADMIN))]
