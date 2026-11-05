@@ -54,7 +54,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 _PLACEHOLDER = re.compile(r"⟦([A-Z]+_\d+)⟧")
 _MIN_NAME_LENGTH = 2  # shorter "names" ("I", "a") would wipe out ordinary words
 _APOSTROPHES = "'’‘ʼ`"
-_EMAIL_LOCAL_SYMBOLS = frozenset("._%+-")
+_EMAIL_LOCAL_SYMBOLS = frozenset("!#$%&'*+-/=?^_`{|}~.")
 _NAME_SEPARATORS = re.compile(r"[\s\-‐‑–—]+")
 _MAX_NAME_RUN = 3  # runs of more parts than this only match as the full name
 
