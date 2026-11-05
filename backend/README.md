@@ -87,6 +87,7 @@ app/
     errors.py       Single error format (RFC 9457 problem details)
     log_config.py   JSON logs with request ID; Uvicorn logs routed through it
     middleware.py   Request ID and access log, security headers, body size limit
+    security.py     Password hashing and access tokens (used by login, coming in BE-3a-2)
   api/v1/         Thin HTTP layer: validate input, call a service, return a response
   api/deps.py     Shared request dependencies (currently the readiness probe)
   db/             Base model and mixins, engine and sessions, readiness check
@@ -130,7 +131,8 @@ and `admin` by a database check.
 
 ## Attribution
 
-- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg, Alembic;
-  dev tools pytest, httpx2, Ruff, mypy. See `pyproject.toml` for versions.
+- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg, Alembic,
+  argon2-cffi, PyJWT, AnyIO; dev tools pytest, httpx2, Ruff, mypy. See `pyproject.toml` for
+  versions.
 - AI assistance: initial scaffolding drafted with an AI coding assistant, then reviewed,
   tested, and edited by the team. Each pull request notes where AI assistance was used.
