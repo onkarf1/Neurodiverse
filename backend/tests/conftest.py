@@ -9,7 +9,7 @@ from app.core.config import Settings
 from app.main import create_app
 from tests.helpers import make_settings
 
-pytest_plugins = ["tests.db_fixtures"]
+pytest_plugins = ["tests.db_fixtures", "tests.auth_fixtures"]
 
 _SHARED_LOGGERS = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
 

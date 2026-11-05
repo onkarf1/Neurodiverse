@@ -14,6 +14,7 @@ from app.core.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
+from app.core.security import PasswordWorker
 from app.db.health import DatabaseProbe
 from app.db.session import create_engine, create_session_factory
 
@@ -42,6 +43,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = create_engine(settings)
     app.state.session_factory = create_session_factory(app.state.engine)
+    app.state.password_worker = PasswordWorker(
+        settings.password_hash_concurrency, settings.password_hash_queue_limit
+    )
     app.state.database_probe = DatabaseProbe(
         settings.database_url.get_secret_value(), settings.readiness_timeout_seconds
     )

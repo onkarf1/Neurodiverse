@@ -69,10 +69,20 @@ class PasswordWorker:
     """
 
     def __init__(self, max_concurrent: int, max_waiting: int) -> None:
+        self._max_concurrent = max_concurrent
+        self._max_waiting = max_waiting
         self._limiter = anyio.CapacityLimiter(max_concurrent)
         self._max_in_flight = max_concurrent + max_waiting
         self._in_flight = 0
         _dummy_hash()  # computed now so the first unknown-email login isn't slower
+
+    @property
+    def max_concurrent(self) -> int:
+        return self._max_concurrent
+
+    @property
+    def max_waiting(self) -> int:
+        return self._max_waiting
 
     async def verify(self, password: str, password_hash: str) -> bool:
         return await self._run(lambda: verify_password(password, password_hash))

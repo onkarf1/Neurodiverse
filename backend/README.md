@@ -87,18 +87,46 @@ app/
     errors.py       Single error format (RFC 9457 problem details)
     log_config.py   JSON logs with request ID; Uvicorn logs routed through it
     middleware.py   Request ID and access log, security headers, body size limit
-    security.py     Password hashing and access tokens (used by login, coming in BE-3a-2)
+    security.py     Password hashing and access tokens
   api/v1/         Thin HTTP layer: validate input, call a service, return a response
-  api/deps.py     Shared request dependencies (currently the readiness probe)
+  api/deps.py     Shared request dependencies: session, settings, signed-in user
   db/             Base model and mixins, engine and sessions, readiness check
   models/         Tables: School, User, Goal, Accommodation, Worksheet
+  repositories/   Database queries
+  services/       Business rules (for example, login)
+  schemas/        Request and response formats
 alembic/          Database migrations
 tests/            Pytest suite (tests are written before each feature)
 ```
 
-Added as features need them: `services/` (business rules), `repositories/` (database
-queries filtered by school), `schemas/` (request and response formats), and `ai/`
-(provider, prompts, redaction, guards).
+Planned as features need it: `ai/` (provider, prompts, redaction, guards).
+
+## Authentication
+
+`POST /v1/auth/login` with `{"email": ..., "password": ...}` returns a bearer token. Send it as
+`Authorization: Bearer <token>`. `GET /v1/auth/me` returns the signed-in user.
+
+- Passwords are hashed with Argon2id (RFC 9106 settings) after Unicode normalization, and
+  weaker hashes are upgraded at the next login. Hashing runs on worker threads, at most
+  `PASSWORD_HASH_CONCURRENCY` at a time per process with at most `PASSWORD_HASH_QUEUE_LIMIT`
+  waiting, because each hash uses 64 MiB.
+- Tokens are HS256 JWTs signed with `JWT_SECRET` and valid for `ACCESS_TOKEN_TTL_MINUTES`
+  (default 30). Signature, algorithm, issuer, audience, expiry, not-before and token type
+  are all checked. Changing `JWT_SECRET` signs everyone out; there is no key rotation yet.
+- The user is reloaded on every request, so disabling an account takes effect immediately.
+  Tokens can't otherwise be revoked before they expire, so keep their lifetime short.
+- Failed logins return the same 401 and run the same password check whether the email is
+  unknown, the password is wrong, or the account is disabled.
+- A login releases its database connection before the password check, so a burst of logins
+  can't use up the connection pool and slow down other requests. Upgrading an outdated hash
+  is best effort: if saving it fails, the login still succeeds and it's retried next time.
+- Emails are matched case-insensitively by Postgres, the same way the unique index compares
+  them.
+- Logins are logged with outcome, reason and user ID, never with email or password.
+
+**Not yet implemented:** 503 answers when the password queue is full or the database is
+down, and rejecting unstorable text in emails and passwords (BE-3a-3); role-based access and
+a way to create users (BE-3b); login rate limiting (BE-3c); password reset.
 
 ## Data model
 
@@ -107,8 +135,8 @@ reject links across schools (for example, a worksheet pointing at another school
 Goals have no learner name or identifier fields, but free text could still contain them.
 **Not yet implemented:** personal data must be redacted before any text is sent to an AI
 model (issue #7). Emails are unique across all schools regardless of case, because sign-in
-(issue #3, planned) will identify a person by email alone. Roles are limited to `teacher`
-and `admin` by a database check.
+identifies a person by email alone. Roles are limited to `teacher` and `admin` by a database
+check.
 
 ## Security and operations
 
