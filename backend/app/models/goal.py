@@ -8,8 +8,8 @@ from app.db.base import Base, IdMixin, SchoolScopedMixin, TimestampMixin
 
 class Goal(IdMixin, TimestampMixin, SchoolScopedMixin, Base):
     """An approved learning goal. It has no learner name or identifier fields, but free-text
-    fields could still contain them. Requirement (not yet implemented, issue #7): personal
-    data must be redacted before any of this text is sent to an AI model."""
+    fields could still contain them, so this text must pass through app.ai.redaction before
+    it is sent to an AI model (wired in with the alignment check, issue #8)."""
 
     __tablename__ = "goals"
     __table_args__ = (
