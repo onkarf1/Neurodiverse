@@ -176,18 +176,28 @@ the model in `AI_MODEL` and the key in `ASU_AIR_API_KEY`.
 - Prompts and replies are never logged, and the `openai` SDK's request logging stays off,
   because both contain student text.
 
-**Not yet implemented:** removing personal data before AI calls and checking AI output in code
-(issue #7), the alignment-check endpoint and its prompt (issue #8).
+- `app/ai/redaction.py` replaces personal data with placeholders such as `⟦EMAIL_1⟧` and
+  restores it in replies. By pattern: emails; phone numbers (US, or international starting
+  with `+`); US Social Security numbers; dates such as `3/14/2012`, `14.03.2012`,
+  `2012-03-14`, `March 14, 2012` or `14 March 2012`; and numbers of 6+ digits, optionally with
+  a short letter prefix (`S1234567`). Names only if the teacher lists them: in full and by
+  parts, ignoring case, accents and apostrophe style. **Names that aren't listed are not
+  caught**, so the UI must still warn against entering them. A listed part that is also a
+  word ("Will") is masked everywhere. Text can't impersonate a placeholder, overlapping
+  matches are removed as one, and redaction runs in linear time.
+
+**Not yet implemented:** checking AI output in code (#7b); calling the redactor before every AI
+request, and the alignment-check endpoint and its prompt (#8).
 
 ## Data model
 
 Every school-owned row has a `school_id`. Composite foreign keys make the database itself
 reject links across schools (for example, a worksheet pointing at another school's goal).
 Goals have no learner name or identifier fields, but free text could still contain them.
-**Not yet implemented:** personal data must be redacted before any text is sent to an AI
-model (issue #7). Emails are unique across all schools regardless of case, because sign-in
-identifies a person by email alone. Roles are limited to `teacher` and `admin` by a database
-check.
+**Not yet implemented:** the redactor exists (see AI), but calling it before every AI request
+comes with the alignment-check endpoint (#8). Emails are unique across all schools regardless
+of case, because sign-in identifies a person by email alone. Roles are limited to `teacher`
+and `admin` by a database check.
 
 ## Security and operations
 
