@@ -9,6 +9,8 @@ from app.core.config import Settings
 from app.main import create_app
 from tests.helpers import make_settings
 
+pytest_plugins = ["tests.db_fixtures"]
+
 _SHARED_LOGGERS = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
 
 
@@ -38,6 +40,11 @@ def restore_logging() -> Iterator[None]:
         logger.setLevel(level)
         logger.propagate = propagate
         logger.disabled = disabled
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 @pytest.fixture

@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,22 +14,37 @@ from app.core.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
+from app.db.health import DatabaseProbe
+from app.db.session import create_engine, create_session_factory
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Close database connections cleanly on shutdown.
+    await app.state.engine.dispose()
+    await app.state.database_probe.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Application factory; run with `uvicorn --factory app.main:create_app`."""
     settings = settings or get_settings()
-    configure_logging(settings.log_level)
-
     is_production = settings.app_env == "production"
+    configure_logging(settings.log_level, redact_exception_messages=is_production)
     app = FastAPI(
         title="GoalFit API",
         version="0.1.0",
         docs_url=None if is_production else "/docs",
         redoc_url=None,
         openapi_url=None if is_production else "/openapi.json",
+        lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.engine = create_engine(settings)
+    app.state.session_factory = create_session_factory(app.state.engine)
+    app.state.database_probe = DatabaseProbe(
+        settings.database_url.get_secret_value(), settings.readiness_timeout_seconds
+    )
     register_exception_handlers(app)
 
     # Starlette runs the most recently added middleware first, so this list is innermost first.

@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     database_url: SecretStr
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
 
+    # Connection pool per API process: pool size plus overflow is the most connections it opens.
+    db_pool_size: int = Field(default=5, gt=0)
+    db_max_overflow: int = Field(default=5, ge=0)
+    db_pool_timeout_seconds: float = Field(default=10, gt=0)
+    db_statement_timeout_ms: int = Field(default=5000, gt=0)
+    readiness_timeout_seconds: float = Field(default=2, gt=0)
+
     ai_base_url: str = "https://openai.rc.asu.edu/v1"
     ai_model: str = "qwen3-235b-a22b-instruct-2507"
     asu_air_api_key: SecretStr | None = None

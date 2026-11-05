@@ -1,5 +1,6 @@
 # Images are pinned by digest so builds are reproducible; the tag is kept for readability.
 # uv gets its own FROM stage because Dependabot only updates images named on FROM lines.
+# When bumping uv, also update UV_VERSION in .github/workflows/backend-ci.yml (CI checks this).
 FROM ghcr.io/astral-sh/uv:0.11.14@sha256:1025398289b62de8269e70c45b91ffa37c373f38118d7da036fb8bb8efc85d97 AS uv
 
 FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
