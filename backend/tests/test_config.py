@@ -63,3 +63,7 @@ def test_startup_validation_errors_do_not_reveal_secrets(monkeypatch: pytest.Mon
     message = str(error.value)
     assert TEST_SECRET[:8] not in message
     assert "test-db-password" not in message
+
+
+def test_database_connect_timeout_defaults_to_five_seconds() -> None:
+    assert make_settings().db_connect_timeout_seconds == 5

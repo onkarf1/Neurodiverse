@@ -6,7 +6,8 @@ name must end in "_test" so a dev or production database can never be wiped by a
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Mapping
+import socket
+from collections.abc import AsyncIterator, Iterator, Mapping
 from pathlib import Path
 
 import pytest
@@ -86,3 +87,12 @@ async def db_session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
             await session.close()
             await transaction.rollback()
     await engine.dispose()
+
+
+@pytest.fixture
+def silent_server_port() -> Iterator[int]:
+    """A port that accepts TCP connections but never replies, like a hung database."""
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        yield server.getsockname()[1]

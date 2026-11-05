@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 import uuid
@@ -7,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
+from httpx2 import Response
 from sqlalchemy import literal, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from app.core import security
 from app.core.constants import PROBLEM_JSON
 from app.core.security import (
     PasswordWorker,
+    PasswordWorkerBusy,
     create_access_token,
     password_needs_rehash,
 )
@@ -297,3 +300,108 @@ def test_session_stays_usable_after_a_failed_hash_upgrade(
         return await session.scalar(select(literal(1)))
 
     assert run_in_database(clean_database, login_then_query) == 1
+
+
+def _post_raw(client: TestClient, body: dict[str, object]) -> Response:
+    # json.dumps escapes lone surrogates (\ud800), exactly as an attacker's client would.
+    return client.post(
+        LOGIN, content=json.dumps(body), headers={"Content-Type": "application/json"}
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"email": "te\x00@example.com", "password": TEST_PASSWORD},
+        {"email": "te\ud800@example.com", "password": TEST_PASSWORD},
+        {"email": "teacher@example.com", "password": "\ud800"},
+        {"email": "teacher@example.com\n", "password": TEST_PASSWORD},
+    ],
+    ids=["NUL in email", "surrogate in email", "surrogate in password", "newline in email"],
+)
+def test_unstorable_text_is_rejected_before_reaching_the_database(
+    auth_client: TestClient, body: dict[str, object]
+) -> None:
+    response = _post_raw(auth_client, body)
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == PROBLEM_JSON
+
+
+def test_busy_password_worker_answers_503_with_retry_after(
+    auth_client: TestClient, seed_user: SeedUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed_user()
+
+    async def busy(*_args: object) -> bool:
+        raise PasswordWorkerBusy
+
+    monkeypatch.setattr(PasswordWorker, "verify", busy)
+
+    response = auth_client.post(LOGIN, json={"email": "teacher@example.com", "password": "x"})
+
+    assert response.status_code == 503
+    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["Retry-After"] == "1"
+
+
+@pytest.mark.parametrize(
+    "host", ["127.0.0.1:1", "no-such-host.invalid:5432"], ids=["refused", "unknown host"]
+)
+def test_database_outage_answers_503_without_error_traceback(
+    host: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    settings = make_settings(
+        database_url=f"postgresql+asyncpg://user:db-secret@{host}/goalfit_test",
+        db_pool_timeout_seconds=1,
+    )
+    app = create_app(settings)
+    # create_app replaces the root log handlers, so reattach pytest's capture handler.
+    logging.getLogger().addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING)
+
+    with TestClient(app) as client:
+        response = client.post(LOGIN, json={"email": "a@example.com", "password": "x"})
+
+    assert response.status_code == 503
+    assert response.headers["content-type"] == PROBLEM_JSON
+    assert response.headers["Retry-After"] == "5"
+    assert "db-secret" not in response.text
+    # A one-line warning, not an error traceback per request during an outage.
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert any(r.getMessage() == "Dependency unavailable" for r in caplog.records)
+
+
+def test_hung_database_answers_503_within_the_connect_timeout(silent_server_port: int) -> None:
+    # Without a connect timeout the driver waits 60 seconds, then the request fails with 500.
+    settings = make_settings(
+        database_url=f"postgresql+asyncpg://u:p@127.0.0.1:{silent_server_port}/goalfit_test",
+        db_connect_timeout_seconds=1,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        started = time.monotonic()
+        response = client.post(LOGIN, json={"email": "a@example.com", "password": "x"})
+        elapsed = time.monotonic() - started
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+    assert elapsed < 3
+
+
+def test_exhausted_connection_pool_answers_503(clean_database: str) -> None:
+    settings = make_settings(
+        database_url=clean_database, db_pool_size=1, db_max_overflow=0, db_pool_timeout_seconds=0.5
+    )
+    app = create_app(settings)
+
+    with TestClient(app) as client:
+        assert client.portal is not None
+        held = client.portal.call(app.state.engine.connect().start)
+        try:
+            response = client.post(LOGIN, json={"email": "a@example.com", "password": "x"})
+        finally:
+            client.portal.call(held.close)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
