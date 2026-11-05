@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 _LEADING_THINKING = re.compile(r"\A<think>.*?</think>", re.DOTALL)
 # Fences only count at the start of a line, so backticks inside a JSON string (for example a
 # worksheet quoting code) never split a block. Any language tag, in any case.
-_FENCED = re.compile(r"^```[A-Za-z0-9_-]*[ \t]*\n(.*?)\n```[ \t]*$", re.DOTALL | re.MULTILINE)
+_FENCED = re.compile(r"^```[^\r\n`]*\r?\n(.*?)^```[ \t]*\r?$", re.DOTALL | re.MULTILINE)
 _CORRECTION = (
     "Your previous reply was not valid JSON in the required format. Reply again with only "
     "the JSON object, with no other text."
