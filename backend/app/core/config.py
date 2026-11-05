@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     ai_model: str = "qwen3-235b-a22b-instruct-2507"
     # Hard ceiling for one AI call, including connecting; no hidden retries.
     ai_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    ai_max_output_tokens: int = Field(default=2048, ge=64, le=32_768)
     asu_air_api_key: SecretStr | None = None
 
     @field_validator("log_level", mode="before")

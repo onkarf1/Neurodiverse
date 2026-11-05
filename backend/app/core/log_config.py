@@ -90,6 +90,7 @@ def configure_logging(level: LogLevel, *, redact_exception_messages: bool = Fals
     uvicorn_logger.setLevel(logging.NOTSET)
     logging.getLogger("uvicorn.error").setLevel(logging.NOTSET)
     logging.getLogger("uvicorn.access").disabled = True
-    # The openai SDK logs full request bodies at debug level (enabled with OPENAI_LOG=debug).
-    # Those bodies contain student text, so its logger never goes below WARNING.
+    # Requests to the AI contain student text. The openai SDK's debug logging (OPENAI_LOG=debug)
+    # currently records only methods, status codes and request IDs, but older versions logged
+    # full request bodies; capping it at WARNING keeps a future SDK change from leaking them.
     logging.getLogger("openai").setLevel(logging.WARNING)
