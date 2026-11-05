@@ -18,6 +18,7 @@ Redacted text is NFC-normalised, so restored text may differ from the input in U
 
 import re
 import unicodedata
+from array import array
 from collections.abc import Sequence
 
 _MONTH = (
@@ -72,20 +73,6 @@ def _strip_accents(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", text) if not unicodedata.combining(c))
 
 
-def _accented_letters() -> dict[str, str]:
-    """Maps each ASCII letter to its accented forms in the Latin blocks ("e" -> "èéêë…")."""
-    groups: dict[str, list[str]] = {}
-    for code in [*range(0xC0, 0x250), *range(0x1E00, 0x1F00)]:
-        letter = chr(code)
-        base = _strip_accents(letter).lower()
-        if base != letter.lower() and len(base) == 1 and base.isascii() and base.isalpha():
-            groups.setdefault(base, []).append(letter)
-    return {base: "".join(letters) for base, letters in groups.items()}
-
-
-_ACCENTED = _accented_letters()
-
-
 def _fold(name: str) -> str:
     """The spelling-insensitive form of a name, used to give its variants one placeholder."""
     for apostrophe in _APOSTROPHES:
@@ -93,13 +80,32 @@ def _fold(name: str) -> str:
     return _NAME_SEPARATORS.sub(" ", _strip_accents(name).casefold()).strip()
 
 
-def _letter_pattern(char: str) -> str:
-    if char in _APOSTROPHES:
-        return f"[{re.escape(_APOSTROPHES)}]"
-    base = _strip_accents(char).lower()
-    if len(base) == 1 and base in _ACCENTED:
-        return f"[{base}{_ACCENTED[base]}]"
-    return re.escape(char)
+def _fold_with_offsets(text: str) -> tuple[str, array, array]:
+    folded: list[str] = []
+    starts = array("I")
+    ends = array("I")
+    separator_start: int | None = None
+    for index, char in enumerate(text):
+        if char.isspace() or char in "-‐‑–—":
+            if separator_start is None:
+                separator_start = index
+            continue
+        if separator_start is not None:
+            folded.append(" ")
+            starts.append(separator_start)
+            ends.append(index)
+            separator_start = None
+        if char in _APOSTROPHES:
+            char = "'"
+        for folded_char in _strip_accents(char).casefold():
+            folded.append(folded_char)
+            starts.append(index)
+            ends.append(index + 1)
+    if separator_start is not None:
+        folded.append(" ")
+        starts.append(separator_start)
+        ends.append(len(text))
+    return "".join(folded), starts, ends
 
 
 def _name_pattern(names: Sequence[str]) -> re.Pattern[str] | None:
@@ -119,12 +125,9 @@ def _name_pattern(names: Sequence[str]) -> re.Pattern[str] | None:
         return None
     # Longest first, so a full name becomes one placeholder rather than one per part.
     ordered = sorted(terms.items(), key=lambda item: len(item[0]), reverse=True)
-    alternatives = "|".join(
-        _NAME_SEPARATORS.pattern.join("".join(map(_letter_pattern, part)) for part in term)
-        for _, term in ordered
-    )
+    alternatives = "|".join(re.escape(term) for term, _ in ordered)
     # (?<!\w)/(?!\w) rather than \b, so names that start or end with punctuation still match.
-    return re.compile(rf"(?<!\w)(?:{alternatives})(?!\w)", re.IGNORECASE)
+    return re.compile(rf"(?<!\w)(?:{alternatives})(?!\w)")
 
 
 class Redactor:
@@ -148,8 +151,19 @@ class Redactor:
         # "Name" can never match inside a placeholder.
         text = unicodedata.normalize("NFC", text).replace("⟦", "[").replace("⟧", "]")
         matches: list[tuple[int, int, int, str]] = []
+        folded_text, name_starts, name_ends = (
+            _fold_with_offsets(text)
+            if any(kind == "NAME" for kind, _ in self._patterns)
+            else ("", array("I"), array("I"))
+        )
         for priority, (kind, pattern) in enumerate(self._patterns):
-            for m in pattern.finditer(text):
+            searchable_text = folded_text if kind == "NAME" else text
+            for m in pattern.finditer(searchable_text):
+                if kind == "NAME":
+                    start = name_starts[m.start()]
+                    end = name_ends[m.end() - 1]
+                    matches.append((start, end, priority, kind))
+                    continue
                 start = _email_start(text, m.start()) if kind == "EMAIL" else m.start()
                 matches.append((start, m.end(), priority, kind))
         matches.sort()

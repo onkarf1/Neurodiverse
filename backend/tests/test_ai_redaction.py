@@ -78,6 +78,8 @@ def test_listed_names_are_removed_in_full_and_in_parts() -> None:
         ("José", "Jose", "⟦NAME_1⟧"),  # accent dropped
         ("Jose", "José", "⟦NAME_1⟧"),  # accent added
         ("Thu Nguyen", "Nguyễn", "⟦NAME_1⟧"),
+        ("Groß", "GROSS", "⟦NAME_1⟧"),  # multi-character case fold
+        ("Νίκος", "Νικος", "⟦NAME_1⟧"),  # Greek accent dropped
     ],
 )
 def test_listed_names_are_caught_in_common_spelling_variants(
