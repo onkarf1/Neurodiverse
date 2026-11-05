@@ -100,7 +100,7 @@ alembic/          Database migrations
 tests/            Pytest suite (tests are written before each feature)
 ```
 
-Planned as features need it: `ai/` (provider, prompts, redaction, guards).
+  ai/             AI provider adapter and error types
 
 ## Authentication
 
@@ -155,6 +155,22 @@ Inside Docker: `docker compose run --rm api python -m app.cli seed-demo`.
 **Not yet implemented:** creating, disabling or changing users through the API, login rate
 limiting (BE-3c), and password reset.
 
+## AI
+
+`app/ai/` talks to the ASU Research Computing gateway (`AI_BASE_URL`, OpenAI-compatible) with
+the model in `AI_MODEL` and the key in `ASU_AIR_API_KEY`.
+
+- One provider interface, so the model or gateway can change without touching services.
+- Requests use temperature 0, no hidden retries, and a hard `AI_TIMEOUT_SECONDS` limit on the
+  whole call (default 30). Timeouts, connection failures, rate limits and gateway errors are
+  "temporarily unavailable"; a rejected request or missing key is a configuration error.
+- Text that can't be encoded (a lone surrogate) is replaced rather than failing the request.
+- The `openai` SDK's request logging stays off, because request bodies contain student text.
+
+**Not yet implemented:** structured JSON replies and versioned prompt files (AI-1b), removing
+personal data before AI calls and checking AI output in code (issue #7), the alignment-check
+endpoint and its prompt (issue #8).
+
 ## Data model
 
 Every school-owned row has a `school_id`. Composite foreign keys make the database itself
@@ -187,7 +203,7 @@ check.
 ## Attribution
 
 - Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg, Alembic,
-  argon2-cffi, PyJWT, AnyIO; dev tools pytest, httpx2, Ruff, mypy. See `pyproject.toml` for
-  versions.
+  argon2-cffi, PyJWT, AnyIO, OpenAI Python SDK; dev tools pytest, httpx2, Ruff, mypy. See
+  `pyproject.toml` for versions.
 - AI assistance: initial scaffolding drafted with an AI coding assistant, then reviewed,
   tested, and edited by the team. Each pull request notes where AI assistance was used.

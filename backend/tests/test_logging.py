@@ -170,3 +170,10 @@ def test_redaction_respects_raise_from_none() -> None:
 
     assert "LookupError" in trace
     assert "KeyError" not in trace
+
+
+def test_ai_sdk_request_logging_stays_off_even_at_debug_level() -> None:
+    # The openai SDK can log full request bodies (student text) when OPENAI_LOG=debug is set.
+    configure_logging("DEBUG")
+
+    assert logging.getLogger("openai").getEffectiveLevel() >= logging.WARNING
