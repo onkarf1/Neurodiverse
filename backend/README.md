@@ -131,8 +131,14 @@ Planned as features need it: `ai/` (provider, prompts, redaction, guards).
   misconfiguration (wrong password, missing database or table, a statement timeout) stay
   500 with a logged traceback, so they get noticed.
 
-**Not yet implemented:** role-based access and a way to create users (BE-3b), login rate
-limiting (BE-3c), and password reset.
+### Roles
+
+`GET /v1/users` (admin only) lists users in the admin's own school, sorted by email, with
+`limit` (1 to 100, default 50) and `offset` (0 to 10,000). Teachers get 403. Roles come from
+the user reloaded on every request, so demoting an admin takes effect on their next request.
+
+**Not yet implemented:** a command to create demo accounts (BE-3b-2); creating, disabling or
+changing users through the API; login rate limiting (BE-3c); password reset.
 
 ## Data model
 
