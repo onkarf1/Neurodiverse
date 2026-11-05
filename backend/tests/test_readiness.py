@@ -1,23 +1,11 @@
-import socket
 import time
-from collections.abc import Iterator
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import make_url
 
 from app.core.constants import PROBLEM_JSON
 from app.main import create_app
 from tests.helpers import make_settings
-
-
-@pytest.fixture
-def silent_server_port() -> Iterator[int]:
-    """A port that accepts TCP connections but never replies, like a hung database."""
-    with socket.socket() as server:
-        server.bind(("127.0.0.1", 0))
-        server.listen()
-        yield server.getsockname()[1]
 
 
 def test_ready_when_database_is_reachable(database_url: str) -> None:

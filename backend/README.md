@@ -109,7 +109,7 @@ Planned as features need it: `ai/` (provider, prompts, redaction, guards).
 - Passwords are hashed with Argon2id (RFC 9106 settings) after Unicode normalization, and
   weaker hashes are upgraded at the next login. Hashing runs on worker threads, at most
   `PASSWORD_HASH_CONCURRENCY` at a time per process with at most `PASSWORD_HASH_QUEUE_LIMIT`
-  waiting, because each hash uses 64 MiB.
+  waiting, because each hash uses 64 MiB. Beyond that, login answers 503 with `Retry-After`.
 - Tokens are HS256 JWTs signed with `JWT_SECRET` and valid for `ACCESS_TOKEN_TTL_MINUTES`
   (default 30). Signature, algorithm, issuer, audience, expiry, not-before and token type
   are all checked. Changing `JWT_SECRET` signs everyone out; there is no key rotation yet.
@@ -121,12 +121,18 @@ Planned as features need it: `ai/` (provider, prompts, redaction, guards).
   can't use up the connection pool and slow down other requests. Upgrading an outdated hash
   is best effort: if saving it fails, the login still succeeds and it's retried next time.
 - Emails are matched case-insensitively by Postgres, the same way the unique index compares
-  them.
+  them. Emails with control characters and passwords that can't be encoded get a 422.
 - Logins are logged with outcome, reason and user ID, never with email or password.
+- Temporary database outages get a 503 with `Retry-After` and a one-line warning instead of a
+  500 with a traceback: the database is unreachable or stuck (no answer within
+  `DB_CONNECT_TIMEOUT_SECONDS`), the connection pool is exhausted, the connection drops
+  mid-request (restart or failover), the server refuses new connections (too many
+  connections, shutting down, starting up) or runs out of resources. Bugs and
+  misconfiguration (wrong password, missing database or table, a statement timeout) stay
+  500 with a logged traceback, so they get noticed.
 
-**Not yet implemented:** 503 answers when the password queue is full or the database is
-down, and rejecting unstorable text in emails and passwords (BE-3a-3); role-based access and
-a way to create users (BE-3b); login rate limiting (BE-3c); password reset.
+**Not yet implemented:** role-based access and a way to create users (BE-3b), login rate
+limiting (BE-3c), and password reset.
 
 ## Data model
 

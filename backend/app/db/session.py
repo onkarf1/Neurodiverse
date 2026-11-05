@@ -20,7 +20,8 @@ def create_engine(settings: Settings) -> AsyncEngine:
         # Keeps query parameter values (which may be student data) out of error messages.
         hide_parameters=True,
         connect_args={
-            "server_settings": {"statement_timeout": str(settings.db_statement_timeout_ms)}
+            "timeout": settings.db_connect_timeout_seconds,
+            "server_settings": {"statement_timeout": str(settings.db_statement_timeout_ms)},
         },
     )
 

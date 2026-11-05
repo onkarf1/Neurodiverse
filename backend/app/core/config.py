@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=5, gt=0)
     db_max_overflow: int = Field(default=5, ge=0)
     db_pool_timeout_seconds: float = Field(default=10, gt=0)
+    # The driver's own default is 60 s, which would leave requests hanging on a stuck database.
+    db_connect_timeout_seconds: float = Field(default=5, gt=0)
     db_statement_timeout_ms: int = Field(default=5000, gt=0)
     readiness_timeout_seconds: float = Field(default=2, gt=0)
 
