@@ -13,3 +13,7 @@ PROBLEM_JSON: Final = "application/problem+json"
 
 ACCESS_LOGGER: Final = "app.access"
 ERROR_LOGGER: Final = "app.error"
+
+# Longest password login accepts; also enforced when accounts are created, so no account can
+# have a password that login would refuse. The cap bounds hashing work per request.
+MAX_PASSWORD_LENGTH: Final = 128

@@ -81,6 +81,7 @@ the database or AI provider can change without touching routes.
 ```
 app/
   main.py         Application factory: middleware order, error handlers, routers
+  cli.py          Command-line tasks (seed-demo)
   core/           Cross-cutting concerns
     config.py       Settings from environment variables (secrets hidden when printed)
     context.py      Current request ID
@@ -137,8 +138,22 @@ Planned as features need it: `ai/` (provider, prompts, redaction, guards).
 `limit` (1 to 100, default 50) and `offset` (0 to 10,000). Teachers get 403. Roles come from
 the user reloaded on every request, so demoting an admin takes effect on their next request.
 
-**Not yet implemented:** a command to create demo accounts (BE-3b-2); creating, disabling or
-changing users through the API; login rate limiting (BE-3c); password reset.
+### Demo accounts
+
+```bash
+uv run python -m app.cli seed-demo                       # Demo School, admin and teacher
+uv run python -m app.cli seed-demo --school "Pilot" --admin-email lead@pilot.example
+```
+
+Passwords come from `DEMO_ADMIN_PASSWORD` and `DEMO_TEACHER_PASSWORD` (15 to 128 characters),
+set in the environment or in `.env`; the environment wins if both are set. If one isn't set,
+a random password is generated and printed once. The admin and teacher emails must differ.
+Existing accounts are never changed, so running it again can't reset a password; if several
+schools share the name, the oldest is used. It refuses to run when `APP_ENV=production`.
+Inside Docker: `docker compose run --rm api python -m app.cli seed-demo`.
+
+**Not yet implemented:** creating, disabling or changing users through the API, login rate
+limiting (BE-3c), and password reset.
 
 ## Data model
 
