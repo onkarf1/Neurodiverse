@@ -20,6 +20,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 COPY app ./app
+# Migrations ship with the image: docker compose run --rm api alembic upgrade head
+COPY alembic.ini ./
+COPY alembic ./alembic
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser

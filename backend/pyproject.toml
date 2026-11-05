@@ -5,6 +5,7 @@ description = "GoalFit backend API: checks whether learning activities practice 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.14",
     "asyncpg>=0.30",
     "fastapi>=0.115",
     "pydantic-settings>=2.6",
@@ -31,6 +32,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+
+# The local alembic/ folder would otherwise make Ruff treat the alembic package as our own.
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
