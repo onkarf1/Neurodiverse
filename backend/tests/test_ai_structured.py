@@ -149,7 +149,10 @@ async def test_unavailable_gateway_is_not_retried() -> None:
         ('{"aligned": true, "reason": "<think>x</think> y"}', "<think>x</think> y"),
         ('<think>hmm</think>\n{"aligned": true, "reason": "use <think>"}', "use <think>"),
         ('```json\n{"aligned": true, "reason": "<think>a</think> b"}\n```', "<think>a</think> b"),
-        ('<think>never closed\n```json\n{"aligned": true, "reason": "ok"}\n```', "ok"),
+        (
+            '<think>never closed\n```json\n{"aligned": true, "reason": "</think>"}\n```',
+            "</think>",
+        ),
     ],
     ids=[
         "opening tag in a value",

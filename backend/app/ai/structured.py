@@ -10,9 +10,9 @@ from app.ai.provider import LLMProvider, Message
 logger = logging.getLogger(__name__)
 
 # A closed reasoning block at the very start of a reply, where models put it. Never matched
-# elsewhere, so values that mention <think> are left untouched. An unclosed block is kept, so a
-# fenced answer after it can still be found.
-_LEADING_THINKING = re.compile(r"\A<think>.*?</think>", re.DOTALL)
+# elsewhere or past a fenced answer, so values that mention <think> are left untouched. An
+# unclosed block is kept, so a fenced answer after it can still be found.
+_LEADING_THINKING = re.compile(r"\A<think>(?:(?!^```)[\s\S])*?</think>", re.MULTILINE)
 # Fences only count at the start of a line, so backticks inside a JSON string (for example a
 # worksheet quoting code) never split a block. Any language tag, in any case.
 _FENCED = re.compile(r"^```[^\r\n`]*\r?\n(.*?)^```[ \t]*\r?$", re.DOTALL | re.MULTILINE)
