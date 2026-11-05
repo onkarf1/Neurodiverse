@@ -31,6 +31,7 @@ API locally, databases in Docker:
 
 ```bash
 docker compose up -d postgres redis
+uv run alembic upgrade head        # create or update tables
 uv run uvicorn --factory app.main:create_app --reload
 ```
 
@@ -39,6 +40,24 @@ Health checks: `/v1/health` (process is alive, never checks dependencies) and `/
 readiness check uses its own connection, so a busy instance is never reported unhealthy.
 
 Interactive API docs (not served in production): http://localhost:8000/docs
+
+## Database migrations
+
+```bash
+uv run alembic revision --autogenerate -m "describe the change"   # after editing models
+uv run alembic upgrade head                                        # apply
+uv run alembic downgrade -1                                        # undo the last one
+docker compose run --rm api alembic upgrade head                   # inside Docker
+```
+
+Always review a generated migration before committing it. Tests catch drift between
+models and migrations: new or removed tables, columns, indexes and constraints, type and
+length changes, nullability, foreign key rules, and server defaults (via `alembic check`),
+plus new user roles (a test saves every role) and CHECK constraints (compared by name).
+Alembic can't detect every change, so for anything else (for example, a renamed column)
+write and review the migration by hand.
+
+`updated_at` is set automatically on ORM updates only; bulk updates and raw SQL must set it.
 
 ## Test and check
 
@@ -70,13 +89,25 @@ app/
     middleware.py   Request ID and access log, security headers, body size limit
   api/v1/         Thin HTTP layer: validate input, call a service, return a response
   api/deps.py     Shared request dependencies (currently the readiness probe)
-  db/             Engine and sessions, readiness check
+  db/             Base model and mixins, engine and sessions, readiness check
+  models/         Tables: School, User, Goal, Accommodation, Worksheet
+alembic/          Database migrations
 tests/            Pytest suite (tests are written before each feature)
 ```
 
 Added as features need them: `services/` (business rules), `repositories/` (database
-queries filtered by school), `models/` (tables), `schemas/` (request and response formats),
-and `ai/` (provider, prompts, redaction, guards).
+queries filtered by school), `schemas/` (request and response formats), and `ai/`
+(provider, prompts, redaction, guards).
+
+## Data model
+
+Every school-owned row has a `school_id`. Composite foreign keys make the database itself
+reject links across schools (for example, a worksheet pointing at another school's goal).
+Goals have no learner name or identifier fields, but free text could still contain them.
+**Not yet implemented:** personal data must be redacted before any text is sent to an AI
+model (issue #7). Emails are unique across all schools regardless of case, because sign-in
+(issue #3, planned) will identify a person by email alone. Roles are limited to `teacher`
+and `admin` by a database check.
 
 ## Security and operations
 
@@ -99,7 +130,7 @@ and `ai/` (provider, prompts, redaction, guards).
 
 ## Attribution
 
-- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg; dev tools
-  pytest, httpx2, Ruff, mypy. See `pyproject.toml` for versions.
+- Libraries: FastAPI, Uvicorn, Pydantic, pydantic-settings, SQLAlchemy, asyncpg, Alembic;
+  dev tools pytest, httpx2, Ruff, mypy. See `pyproject.toml` for versions.
 - AI assistance: initial scaffolding drafted with an AI coding assistant, then reviewed,
   tested, and edited by the team. Each pull request notes where AI assistance was used.
