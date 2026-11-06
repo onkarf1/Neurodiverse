@@ -1,0 +1,16 @@
+import { useDeferredValue, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { CheckCheck, ClipboardCheck, FilePenLine, History as HistoryIcon, Search, ShieldCheck } from 'lucide-react';
+import { api, date, query } from '../api';
+import type { Audit, Paginated } from '../types';
+import { Badge, EmptyState, ErrorState, LoadingState, PageHeader } from '../components/ui';
+import Pagination from '../components/Pagination';
+
+export default function History() {
+  const [search, setSearch] = useState('');
+  const deferred = useDeferredValue(search);
+  const [page, setPage] = useState(1);
+  const [order, setOrder] = useState('desc');
+  const { data, isPending, error, refetch } = useQuery({ queryKey: ['audit', { q: deferred, page, order }], queryFn: () => api<Paginated<Audit>>(`/audit${query({ q: deferred, page, page_size: 12, order, sort: 'created_at' })}`) });
+  return <div className="page-stack"><PageHeader eyebrow="A CLEAR RECORD OF THOUGHTFUL DECISIONS" title="The story behind each activity" description="Checks, revisions, teacher decisions, and practice, all in one place." /><div className="history-banner clay-card"><span className="icon-bubble mint"><ShieldCheck size={26} /></span><div><h2>Teacher-led. Clearly recorded.</h2><p>Approval and rejection records stay in the history. They cannot be edited or deleted.</p></div><Badge color="mint">Append-only history</Badge></div><div className="toolbar"><div className="search-input"><Search size={18} /><input aria-label="Search history" placeholder="Find a teacher, activity, or decision…" value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} /></div><label className="filter-select"><span className="sr-only">Sort history</span><select value={order} onChange={e => { setOrder(e.target.value); setPage(1) }}><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label></div>{isPending ? <LoadingState rows={5} /> : error ? <ErrorState message={error.message} retry={() => void refetch()} /> : !data?.items.length ? <EmptyState title="No history matches" description="Try another search. Your checks and decisions will appear here as you work." /> : <><div className="clay-card history-list">{data.items.map(item => { const Icon = item.action.includes('approv') ? CheckCheck : item.action.includes('check') ? ClipboardCheck : item.action.includes('draft') || item.action.includes('revis') ? FilePenLine : HistoryIcon; return <article className="history-item" key={item.id}><span className={`icon-bubble small ${item.action.includes('approv') ? 'mint' : item.action.includes('reject') ? 'peach' : 'lavender'}`}><Icon size={19} /></span><div><div className="history-item-heading"><strong>{item.actor}</strong><Badge status={item.action} /></div><h3>{item.target}</h3><p>{item.detail}</p><span className="muted">{date(item.created_at)}{item.version ? ` · Version ${item.version}` : ''}</span></div><time dateTime={item.created_at}>{new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Phoenix' }).format(new Date(item.created_at))}</time></article> })}</div><Pagination page={page} pages={data.pages} total={data.total} onChange={setPage} /></>}</div>;
+}
