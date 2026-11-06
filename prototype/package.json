@@ -1,0 +1,14 @@
+{
+  "name": "strivetrack-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-contained StriveTrack teaching workspace demo",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "check": "npm --prefix frontend run lint && npm --prefix frontend run build",
+    "test:backend": "node scripts/test-backend.mjs",
+    "test:launcher": "node --test scripts/services.test.mjs",
+    "test:e2e": "npm --prefix frontend run test:e2e"
+  }
+}
