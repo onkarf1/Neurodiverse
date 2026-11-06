@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StriveTrack: Workflow and Architecture</title>
+<style>
+  @page { size: Letter; margin: 16mm 15mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1f2d2a; font-size: 10.2pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 26pt; margin: 0 0 6px; color: #1e3d36; }
+  h2 { font-size: 15.5pt; color: #1e3d36; margin: 26px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #cfe5da; break-after: avoid; }
+  h3 { font-size: 11.8pt; color: #2b5a4f; margin: 16px 0 5px; break-after: avoid; }
+  h4 { font-size: 10.4pt; margin: 10px 0 3px; break-after: avoid; }
+  p { margin: 5px 0 8px; }
+  ul, ol { margin: 4px 0 10px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  code, .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 8.9pt; background: #f1f4f2; padding: 0 3px; border-radius: 3px; }
+  pre { font-family: Consolas, monospace; font-size: 8.4pt; background: #f4f6f5; border: 1px solid #dde5e1; border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; break-inside: avoid; margin: 6px 0 10px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 8.9pt; break-inside: auto; }
+  th, td { border: 1px solid #d6e0db; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #e6f1ec; color: #1e3d36; }
+  tr { break-inside: avoid; }
+  .cover { height: 245mm; display: flex; flex-direction: column; justify-content: center; break-after: page; }
+  .cover .tag { font-size: 10pt; letter-spacing: 2px; color: #5b7d73; font-weight: 700; }
+  .cover .sub { font-size: 13pt; color: #44615a; max-width: 140mm; }
+  .cover .meta { margin-top: 30px; font-size: 9.5pt; color: #5b6f69; }
+  .motto { margin-top: 26px; padding: 12px 16px; background: #eaf5ef; border-left: 4px solid #4f9a80; font-size: 12pt; font-weight: 600; max-width: 150mm; }
+  .toc { columns: 2; column-gap: 24px; font-size: 9.6pt; }
+  .toc li { break-inside: avoid; }
+  .page { break-before: page; }
+  .box { border: 1px solid #d6e0db; border-radius: 8px; padding: 8px 12px; margin: 8px 0 12px; background: #fbfdfc; break-inside: avoid; }
+  .note { border-left: 4px solid #e2b04a; background: #fff8e8; padding: 7px 11px; margin: 8px 0 12px; break-inside: avoid; }
+  .key { border-left: 4px solid #4f9a80; background: #eef7f2; padding: 7px 11px; margin: 8px 0 12px; break-inside: avoid; }
+  figure { margin: 8px 0 14px; break-inside: avoid; text-align: center; }
+  figcaption { font-size: 8.6pt; color: #5b6f69; margin-top: 3px; }
+  svg text { font-family: "Segoe UI", Arial, sans-serif; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .small { font-size: 8.8pt; color: #4b5f59; }
+  .pill { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 8.4pt; font-weight: 600; }
+  .p-draft { background: #e8e4f7; } .p-blocked { background: #fde2d6; } .p-approved { background: #d5efe2; } .p-rejected { background: #f3d6d6; } .p-superseded { background: #e6e6e6; } .p-review { background: #fbf0c7; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="tag">SPARK CENTER 2026 NORTH AMERICAN AI CHALLENGE · TECHNICAL DOSSIER</div>
+  <h1>StriveTrack<br>Workflow and Architecture</h1>
+  <p class="sub">A teacher-only workspace that checks whether a practice activity really lets a learner practice the skill in their approved IEP goal, rewrites it when it doesn't, protects every approved accommodation, and records practice sessions without ever scoring the learner.</p>
+  <div class="motto">AI suggests. StriveTrack verifies. The teacher decides.</div>
+  <div class="meta">Version 1.0 · November 5, 2026 · Local MVP (FastAPI + React + SQLite) · AI model: qwen3-30b-a3b via the ASU OpenAI-compatible endpoint<br>All data in this prototype is synthetic.</div>
+</section>
+
+<h2 style="margin-top:0">Contents</h2>
+<ol class="toc">
+  <li>Purpose, users, and the problem</li>
+  <li>System architecture at a glance</li>
+  <li>Technology stack</li>
+  <li>Repository layout</li>
+  <li>Runtime: how the system starts</li>
+  <li>Data model and relationships</li>
+  <li>Status lifecycles (state machines)</li>
+  <li>The teacher workflow, end to end</li>
+  <li>Alignment check pipeline (step by step)</li>
+  <li>Revision drafting pipeline</li>
+  <li>The accommodation guard</li>
+  <li>Approval, superseding, and the practice gate</li>
+  <li>Practice session record</li>
+  <li>Out-of-date check detection</li>
+  <li>AI module internals</li>
+  <li>Backend internals (store, locking, auth, errors)</li>
+  <li>Frontend architecture</li>
+  <li>Dashboard metrics</li>
+  <li>History (audit trail)</li>
+  <li>API reference</li>
+  <li>Validation rules</li>
+  <li>Privacy, safety, and responsible AI</li>
+  <li>Testing and verification</li>
+  <li>Known limits and roadmap</li>
+</ol>
+
+<h2>1. Purpose, users, and the problem</h2>
+<p><b>The problem.</b> Many IEP goals for autistic learners and learners with ADHD target <i>executive-function</i> skills: planning, sequencing, starting a task, holding steps in mind, checking one's own work, and adapting. Worksheets often quietly do that thinking for the learner. If a goal says "independently choose and explain a workable order" but the worksheet says "Follow these steps in order: 1… 2… 3…", the learner can finish it perfectly and never practice planning. Teachers rarely have time to catch this, and when activities are rewritten, approved accommodations (such as "Extra processing time") are easily lost.</p>
+<p><b>Who uses it.</b> Only teachers and case managers. Students never have accounts and never see the app directly; the teacher presents approved activities to the learner and records what happened.</p>
+<table>
+  <tr><th style="width:22%">Persona</th><th>Need</th><th>How StriveTrack helps</th></tr>
+  <tr><td><b>Ms. Patel</b>, special-education teacher, 14 students</td><td>Make sure each practice activity matches each learner's goal without hours of re-reading.</td><td>One-click alignment check with quoted evidence, a demand map, and an AI rewrite she approves.</td></tr>
+  <tr><td><b>Jordan</b>, 16, autistic, goal: plan a work routine</td><td>Real planning practice, with his approved supports every time.</td><td>Unnumbered picture-cue cards, thinking-time timer, easier-reading mode, supports enforced in code.</td></tr>
+</table>
+<div class="key"><b>Core promise.</b> StriveTrack never decides mastery or progress. It records the teacher's decisions and the learner's chosen order and reasoning as evidence for the IEP team.</div>
+
+<h2>2. System architecture at a glance</h2>
+<figure>
+<svg width="680" height="330" viewBox="0 0 680 330" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <rect x="10" y="20" width="190" height="140" rx="12" fill="#eef7f2" stroke="#4f9a80"/>
+  <text x="105" y="44" text-anchor="middle" font-weight="700" font-size="13">Teacher's browser</text>
+  <text x="105" y="64" text-anchor="middle" font-size="10.5">React 19 single-page app</text>
+  <text x="105" y="82" text-anchor="middle" font-size="10">TanStack Query cache</text>
+  <text x="105" y="98" text-anchor="middle" font-size="10">react-router (6 screens)</text>
+  <text x="105" y="114" text-anchor="middle" font-size="10">localStorage: token,</text>
+  <text x="105" y="128" text-anchor="middle" font-size="10">theme, reading settings</text>
+  <text x="105" y="148" text-anchor="middle" font-size="9.5" fill="#5b6f69">Web Speech API (read aloud)</text>
+
+  <rect x="245" y="20" width="170" height="140" rx="12" fill="#f4f1fb" stroke="#8b7cc4"/>
+  <text x="330" y="44" text-anchor="middle" font-weight="700" font-size="13">Vite dev server</text>
+  <text x="330" y="64" text-anchor="middle" font-size="10.5">127.0.0.1:5173</text>
+  <text x="330" y="86" text-anchor="middle" font-size="10">serves the app bundle</text>
+  <text x="330" y="102" text-anchor="middle" font-size="10">proxies /api/* →</text>
+  <text x="330" y="118" text-anchor="middle" font-size="10">127.0.0.1:8001</text>
+
+  <rect x="460" y="20" width="210" height="180" rx="12" fill="#fff7ea" stroke="#d39b3c"/>
+  <text x="565" y="44" text-anchor="middle" font-weight="700" font-size="13">FastAPI backend</text>
+  <text x="565" y="62" text-anchor="middle" font-size="10.5">uvicorn · 127.0.0.1:8001</text>
+  <text x="565" y="84" text-anchor="middle" font-size="10">app/main.py: 36 endpoints,</text>
+  <text x="565" y="100" text-anchor="middle" font-size="10">rules engine, accommodation</text>
+  <text x="565" y="116" text-anchor="middle" font-size="10">guard, approval gate, audit</text>
+  <text x="565" y="138" text-anchor="middle" font-size="10">app/ai.py: prompts, JSON</text>
+  <text x="565" y="154" text-anchor="middle" font-size="10">parsing, quote verification,</text>
+  <text x="565" y="170" text-anchor="middle" font-size="10">demand-map cleaning</text>
+  <text x="565" y="190" text-anchor="middle" font-size="9.5" fill="#5b6f69">reads .env at startup</text>
+
+  <rect x="460" y="240" width="210" height="76" rx="12" fill="#f1f4f2" stroke="#7d8f89"/>
+  <text x="565" y="264" text-anchor="middle" font-weight="700" font-size="12.5">SQLite file</text>
+  <text x="565" y="282" text-anchor="middle" font-size="10">backend/.data/strivetrack.sqlite3</text>
+  <text x="565" y="298" text-anchor="middle" font-size="10">records(entity, id, JSON) + metadata</text>
+
+  <rect x="140" y="230" width="250" height="86" rx="12" fill="#fdecea" stroke="#c46b5f"/>
+  <text x="265" y="254" text-anchor="middle" font-weight="700" font-size="12.5">ASU AI endpoint (optional)</text>
+  <text x="265" y="272" text-anchor="middle" font-size="10">openai.rc.asu.edu/v1/chat/completions</text>
+  <text x="265" y="288" text-anchor="middle" font-size="10">model qwen3-30b-a3b · temp 0.2 · 60 s</text>
+  <text x="265" y="304" text-anchor="middle" font-size="9.5" fill="#7a3d34">receives goal + activity text only</text>
+
+  <line x1="200" y1="80" x2="243" y2="80" stroke="#3d6e62" stroke-width="2" marker-end="url(#a)"/>
+  <text x="222" y="72" text-anchor="middle" font-size="9">HTTP</text>
+  <line x1="415" y1="80" x2="458" y2="80" stroke="#3d6e62" stroke-width="2" marker-end="url(#a)"/>
+  <text x="437" y="72" text-anchor="middle" font-size="9">/api</text>
+  <line x1="565" y1="200" x2="565" y2="238" stroke="#3d6e62" stroke-width="2" marker-end="url(#a)"/>
+  <text x="600" y="224" font-size="9">sqlite3</text>
+  <path d="M460,180 C420,200 400,220 392,240" fill="none" stroke="#c46b5f" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <text x="400" y="205" font-size="9" fill="#7a3d34">HTTPS (httpx)</text>
+</svg>
+<figcaption>Figure 1. Runtime components. Everything except the optional AI endpoint runs on the teacher's own computer.</figcaption>
+</figure>
+<p><b>Design principle.</b> The browser holds no business rules that matter for safety. Every rule (accommodations present, approval required before practice, immutable decisions, verified quotes) is enforced in the backend, then mirrored in the UI only for convenience. The AI is an advisor whose output is checked by code before anyone sees it.</p>
+
+<h2>3. Technology stack</h2>
+<table>
+  <tr><th style="width:20%">Layer</th><th style="width:32%">Technology</th><th>Role</th></tr>
+  <tr><td>Frontend framework</td><td>React 19, TypeScript 5.9, Vite 7</td><td>Single-page app, type-checked, hot-reloading dev server and production build.</td></tr>
+  <tr><td>Data fetching</td><td>@tanstack/react-query 5</td><td>Caching, loading/error states, invalidation after mutations.</td></tr>
+  <tr><td>Routing</td><td>react-router-dom 7</td><td>Screens: login, overview, goals, activities, check, practice, history.</td></tr>
+  <tr><td>UI</td><td>Tailwind 4 (base), custom "clay" CSS, lucide-react icons, framer-motion, sonner toasts, Fontsource Nunito (bundled locally)</td><td>Calm, accessible visual design; reduced-motion respected; no remote fonts or images.</td></tr>
+  <tr><td>Backend</td><td>Python 3.13, FastAPI 0.115, Pydantic 2.10, uvicorn 0.34</td><td>REST API, validation, business rules.</td></tr>
+  <tr><td>AI client</td><td>httpx 0.28 (no vendor SDK)</td><td>Calls any OpenAI-compatible <code>/chat/completions</code> endpoint.</td></tr>
+  <tr><td>Storage</td><td>SQLite (Python standard library)</td><td>Single-file JSON document store, no database server.</td></tr>
+  <tr><td>Tests</td><td>pytest 8 + FastAPI TestClient + httpx.MockTransport; ESLint; tsc; Playwright (browser tests)</td><td>21 backend tests including AI boundary tests with a fake model.</td></tr>
+  <tr><td>Launcher</td><td>Node scripts (<code>scripts/*.mjs</code>)</td><td>One command to set up and start both servers.</td></tr>
+</table>
+
+<h2>4. Repository layout</h2>
+<pre>prototype North America/
+├─ .env                     ← AI key, base URL, model (git-ignored, never printed)
+├─ .env.example             ← template with the same keys
+├─ package.json             ← npm run setup | dev | check | test:backend | test:e2e
+├─ README.md, PITCH.md      ← guide, roadmap, 3-minute pitch script
+├─ scripts/
+│   ├─ setup.mjs            ← creates backend/.venv, installs Python + npm packages
+│   ├─ dev.mjs              ← starts/reuses uvicorn (8001) and Vite (5173), waits for health
+│   ├─ services.mjs         ← detects whether a port is already serving StriveTrack
+│   └─ test-backend.mjs     ← runs pytest inside the venv
+├─ seed/data.py             ← build_seed(): 30 goals, 30 activities, 30 revisions, 30 checks,
+│                              28 observations, 38 history entries, 3 users (all fictional)
+├─ backend/
+│   ├─ app/main.py          ← create_app(): store, rules, endpoints (≈730 lines)
+│   ├─ app/ai.py            ← AIAssistant: prompts, parsing, verification (≈190 lines)
+│   ├─ tests/               ← conftest.py (AI off), test_api.py, test_ai.py
+│   └─ .data/strivetrack.sqlite3
+└─ frontend/src/
+    ├─ main.tsx, App.tsx    ← providers, routes, reset dialog
+    ├─ auth.tsx, api.ts     ← token handling, fetch wrapper, helpers
+    ├─ types.ts             ← shared TypeScript shapes
+    ├─ components/          ← Layout (sidebar/bottom nav), ui (Badge, Button, Modal…), Pagination
+    └─ pages/               ← Login, Dashboard, Library, CheckWorkspace, TryActivity, History</pre>
+
+<h2>5. Runtime: how the system starts</h2>
+<ol>
+  <li><b><code>npm run setup</code></b> creates <code>backend/.venv</code> with Python (override with <code>STRIVETRACK_PYTHON</code>, Python 3.13 used here), installs <code>requirements.txt</code>, and runs <code>npm install</code> in <code>frontend/</code>.</li>
+  <li><b><code>npm run dev</code></b> (<code>scripts/dev.mjs</code>):
+    <ul>
+      <li>Checks both ports first. If a port already serves StriveTrack it is reused; if it is occupied by something else, startup stops with a clear message. Existing services are never killed.</li>
+      <li>Starts <code>python -m uvicorn app.main:app --host 127.0.0.1 --port 8001</code> in <code>backend/</code> and Vite in <code>frontend/</code>.</li>
+      <li>Polls <code>/api/health</code> directly and through the Vite proxy for up to 10 seconds, then prints the URL. Ctrl+C stops only the servers it started.</li>
+    </ul></li>
+  <li><b>Backend startup</b>: <code>create_app()</code> builds the <code>Store</code> (path from <code>STRIVETRACK_DB</code> or the default), builds the <code>AIAssistant</code> from <code>.env</code> (values in the shell win over the file), and in the FastAPI lifespan hook calls <code>store.initialize()</code>, which creates the tables and seeds the database the first time only.</li>
+  <li><b>Browser</b>: opens <code>http://127.0.0.1:5173</code>; all API calls go to relative <code>/api/...</code> and Vite forwards them to port 8001. CORS also allows ports 5173 and 4173 for direct calls.</li>
+</ol>
+<div class="note">The backend runs without auto-reload. After editing backend code or <code>.env</code>, restart <code>npm run dev</code>.</div>
+
+<h2 class="page">6. Data model and relationships</h2>
+<p>Every record is a JSON document in one table, <code>records(entity TEXT, id TEXT, data TEXT, PRIMARY KEY(entity, id))</code>. A second table, <code>metadata(key, value)</code>, holds the <code>seeded</code> flag. There are eight entities.</p>
+<figure>
+<svg width="680" height="300" viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <g font-size="11">
+  <rect x="20" y="20" width="150" height="56" rx="9" fill="#eef7f2" stroke="#4f9a80"/><text x="95" y="42" text-anchor="middle" font-weight="700">goals</text><text x="95" y="60" text-anchor="middle" font-size="9.5">skill, criteria, accommodations</text>
+  <rect x="265" y="20" width="150" height="56" rx="9" fill="#fff7ea" stroke="#d39b3c"/><text x="340" y="42" text-anchor="middle" font-weight="700">activities</text><text x="340" y="60" text-anchor="middle" font-size="9.5">title, content, status</text>
+  <rect x="510" y="20" width="150" height="56" rx="9" fill="#f4f1fb" stroke="#8b7cc4"/><text x="585" y="42" text-anchor="middle" font-weight="700">checks</text><text x="585" y="60" text-anchor="middle" font-size="9.5">result, findings, demand map</text>
+  <rect x="265" y="130" width="150" height="56" rx="9" fill="#f4f1fb" stroke="#8b7cc4"/><text x="340" y="152" text-anchor="middle" font-weight="700">revisions</text><text x="340" y="170" text-anchor="middle" font-size="9.5">version, content, status</text>
+  <rect x="510" y="130" width="150" height="56" rx="9" fill="#eef7f2" stroke="#4f9a80"/><text x="585" y="152" text-anchor="middle" font-weight="700">sessions</text><text x="585" y="170" text-anchor="middle" font-size="9.5">order, reasoning, prompting</text>
+  <rect x="20" y="130" width="150" height="56" rx="9" fill="#fff7ea" stroke="#d39b3c"/><text x="95" y="152" text-anchor="middle" font-weight="700">observations</text><text x="95" y="170" text-anchor="middle" font-size="9.5">teacher note, context</text>
+  <rect x="20" y="230" width="150" height="56" rx="9" fill="#f1f4f2" stroke="#7d8f89"/><text x="95" y="252" text-anchor="middle" font-weight="700">users</text><text x="95" y="270" text-anchor="middle" font-size="9.5">3 demo teachers/admin</text>
+  <rect x="265" y="230" width="150" height="56" rx="9" fill="#f1f4f2" stroke="#7d8f89"/><text x="340" y="252" text-anchor="middle" font-weight="700">audit</text><text x="340" y="270" text-anchor="middle" font-size="9.5">append-only history</text>
+  </g>
+  <g stroke="#3d6e62" stroke-width="1.6" fill="none">
+    <line x1="263" y1="48" x2="172" y2="48" marker-end="url(#b)"/>
+    <line x1="508" y1="48" x2="417" y2="48" marker-end="url(#b)"/>
+    <line x1="340" y1="128" x2="340" y2="78" marker-end="url(#b)"/>
+    <line x1="508" y1="158" x2="417" y2="158" marker-end="url(#b)"/>
+    <line x1="172" y1="158" x2="263" y2="70" marker-end="url(#b)"/>
+    <path d="M540,128 C520,100 450,80 417,66" marker-end="url(#b)"/>
+    <path d="M510,40 C430,4 200,4 150,18" stroke-dasharray="4 3" marker-end="url(#b)"/>
+    <path d="M265,190 C220,200 180,220 150,228" stroke-dasharray="4 3" marker-end="url(#b)"/>
+    <line x1="340" y1="228" x2="340" y2="188" stroke-dasharray="4 3" marker-end="url(#b)"/>
+  </g>
+  <g font-size="9" fill="#3d6e62">
+    <text x="190" y="42">goal_id</text><text x="440" y="42">activity_id</text><text x="346" y="108">activity_id, goal_id</text><text x="440" y="152">revision_id</text><text x="160" y="110">activity_id</text><text x="470" y="96">activity_id</text><text x="300" y="14">goal_id</text><text x="160" y="214">created_by</text><text x="346" y="214">target_id</text>
+  </g>
+</svg>
+<figcaption>Figure 2. Entities and references (arrows point to the record referred to). Dashed: secondary references.</figcaption>
+</figure>
+
+<h3>6.1 Fields by entity</h3>
+<table>
+  <tr><th style="width:14%">Entity</th><th>Fields (beyond <code>id</code>, <code>created_at</code>, <code>updated_at</code>)</th></tr>
+  <tr><td>users</td><td><code>name, email, role</code> (teacher | admin)<code>, initials, color</code>. Demo: Maya Brooks (teacher), Casey Nguyen (teacher), Elena Rivera (admin).</td></tr>
+  <tr><td>goals</td><td><code>title, skill_description, success_criteria, accommodations[]</code> (unique, ≤20), <code>category, status</code> (active | archived)<code>, due_date, created_by</code></td></tr>
+  <tr><td>activities</td><td><code>goal_id, title, content</code> (the worksheet text)<code>, category, status</code> (draft | needs_review | approved | archived)<code>, due_date, color</code> (peach | mint | lavender | lemon)<code>, created_by</code></td></tr>
+  <tr><td>checks</td><td><code>activity_id, goal_id, result</code> (aligned | mismatch | unsure)<code>, summary, findings[]</code> {type, explanation, evidence, confidence, source: rules | ai}<code>, demand_map[]</code> {skill, goal_targets, activity, note, source}<code>, mode</code> (ai-assisted | deterministic-demo)<code>, ai_model, ai_note, goal_fingerprint, content_fingerprint</code>. Computed on read: <code>stale, stale_reasons[]</code>.</td></tr>
+  <tr><td>revisions</td><td><code>activity_id, goal_id, version</code> (1, 2, 3… per activity)<code>, content, accommodations[], status</code> (draft | blocked | approved | rejected | superseded)<code>, blocked_reason, rejection_reason, superseded_by, mode, ai_model, ai_rationale, ai_note, created_by</code></td></tr>
+  <tr><td>observations</td><td><code>activity_id, note</code> (3–5000 chars)<code>, context</code> (≤1000)<code>, created_by</code></td></tr>
+  <tr><td>sessions</td><td><code>activity_id, revision_id, version, learner_label</code> (a code, never a name)<code>, ordered_steps[], reasoning, prompting</code> (independent | one_prompt | several_prompts | modeled)<code>, supports_used[], created_by, recorded_by</code></td></tr>
+  <tr><td>audit</td><td><code>actor</code> (name)<code>, action, target</code> (title)<code>, target_id, version, detail</code>. Never edited or deleted by the API.</td></tr>
+</table>
+
+<h3>6.2 Seed data</h3>
+<p><code>seed/data.py → build_seed()</code> produces a reproducible school: 30 goals across Workplace, Daily living and Community; 30 activities built from three task cards each (some numbered "Follow these steps in order", some with unnumbered "Step cards"); and checks, revisions and observations in every state, including archived records, overdue dates, long text and an empty context. Timestamps are anchored to Nov 5 2026 16:00 UTC, or one hour before the reset time if that is earlier, so freshly created work always sorts above seed data. On reset, the backend adds fingerprints to the seeded checks.</p>
+
+<h2>7. Status lifecycles</h2>
+<h3>7.1 Activity</h3>
+<figure>
+<svg width="680" height="150" viewBox="0 0 680 150" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <g font-size="11" font-weight="700" text-anchor="middle">
+    <rect x="20" y="50" width="110" height="40" rx="20" fill="#e8e4f7"/><text x="75" y="75">draft</text>
+    <rect x="215" y="50" width="130" height="40" rx="20" fill="#fbf0c7"/><text x="280" y="75">needs_review</text>
+    <rect x="440" y="50" width="110" height="40" rx="20" fill="#d5efe2"/><text x="495" y="75">approved</text>
+    <rect x="570" y="105" width="100" height="36" rx="18" fill="#e6e6e6"/><text x="620" y="128">archived</text>
+  </g>
+  <g stroke="#3d6e62" stroke-width="1.6" fill="none">
+    <line x1="130" y1="70" x2="213" y2="70" marker-end="url(#c)"/>
+    <line x1="345" y1="62" x2="438" y2="62" marker-end="url(#c)"/>
+    <path d="M440,82 C400,110 380,110 345,82" marker-end="url(#c)"/>
+    <path d="M550,80 C580,90 600,95 612,103" stroke-dasharray="4 3" marker-end="url(#c)"/>
+  </g>
+  <g font-size="9" fill="#3d6e62" text-anchor="middle">
+    <text x="172" y="62">check run</text>
+    <text x="392" y="52">revision approved</text>
+    <text x="392" y="124">content edited, or goal supports changed</text>
+    <text x="620" y="88">teacher archives</text>
+  </g>
+</svg>
+<figcaption>Figure 3. An activity can only become <b>approved</b> through a revision approval; a PATCH that tries to set it directly is rejected (409).</figcaption>
+</figure>
+<h3>7.2 Revision</h3>
+<figure>
+<svg width="680" height="170" viewBox="0 0 680 170" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <g font-size="11" font-weight="700" text-anchor="middle">
+    <rect x="30" y="20" width="110" height="40" rx="20" fill="#e8e4f7"/><text x="85" y="45">draft</text>
+    <rect x="30" y="115" width="110" height="40" rx="20" fill="#fde2d6"/><text x="85" y="140">blocked</text>
+    <rect x="300" y="20" width="110" height="40" rx="20" fill="#d5efe2"/><text x="355" y="45">approved</text>
+    <rect x="300" y="115" width="110" height="40" rx="20" fill="#f3d6d6"/><text x="355" y="140">rejected</text>
+    <rect x="540" y="65" width="120" height="40" rx="20" fill="#e6e6e6"/><text x="600" y="90">superseded</text>
+  </g>
+  <g stroke="#3d6e62" stroke-width="1.6" fill="none">
+    <path d="M70,60 L70,113" marker-end="url(#d)"/><path d="M100,113 L100,62" marker-end="url(#d)"/>
+    <line x1="140" y1="40" x2="298" y2="40" marker-end="url(#d)"/>
+    <path d="M140,50 C220,80 240,120 298,132" marker-end="url(#d)"/>
+    <path d="M140,140 C200,150 250,150 298,142" marker-end="url(#d)"/>
+    <path d="M140,30 C300,-10 480,20 560,63" stroke-dasharray="4 3" marker-end="url(#d)"/>
+    <path d="M140,128 C300,110 470,100 538,92" stroke-dasharray="4 3" marker-end="url(#d)"/>
+  </g>
+  <g font-size="9" fill="#3d6e62">
+    <text x="8" y="92">support removed</text><text x="104" y="92">restored</text>
+    <text x="180" y="34">approve (all supports present)</text>
+    <text x="200" y="98">reject with reason</text>
+    <text x="400" y="16">a newer version is approved</text>
+  </g>
+</svg>
+<figcaption>Figure 4. <span class="pill p-approved">approved</span>, <span class="pill p-rejected">rejected</span> and <span class="pill p-superseded">superseded</span> are final: edits, deletion and approval return 409. A <span class="pill p-blocked">blocked</span> draft can be saved but not approved.</figcaption>
+</figure>
+
+<h2 class="page">8. The teacher workflow, end to end</h2>
+<figure>
+<svg width="680" height="210" viewBox="0 0 680 210" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="e" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <g font-size="10.5" text-anchor="middle">
+    <rect x="5" y="20" width="120" height="70" rx="10" fill="#eef7f2" stroke="#4f9a80"/><text x="65" y="44" font-weight="700">1 · Goal</text><text x="65" y="60" font-size="9">record skill, criteria,</text><text x="65" y="73" font-size="9">accommodations</text>
+    <rect x="140" y="20" width="120" height="70" rx="10" fill="#fff7ea" stroke="#d39b3c"/><text x="200" y="44" font-weight="700">2 · Activity</text><text x="200" y="60" font-size="9">paste worksheet,</text><text x="200" y="73" font-size="9">link to goal</text>
+    <rect x="275" y="20" width="120" height="70" rx="10" fill="#f4f1fb" stroke="#8b7cc4"/><text x="335" y="44" font-weight="700">3 · Check</text><text x="335" y="60" font-size="9">rules + AI, quotes,</text><text x="335" y="73" font-size="9">demand map</text>
+    <rect x="410" y="20" width="120" height="70" rx="10" fill="#f4f1fb" stroke="#8b7cc4"/><text x="470" y="44" font-weight="700">4 · Revise</text><text x="470" y="60" font-size="9">AI draft, teacher</text><text x="470" y="73" font-size="9">edits, supports guard</text>
+    <rect x="545" y="20" width="130" height="70" rx="10" fill="#d5efe2" stroke="#4f9a80"/><text x="610" y="44" font-weight="700">5 · Approve</text><text x="610" y="60" font-size="9">teacher decision,</text><text x="610" y="73" font-size="9">older drafts retired</text>
+    <rect x="410" y="125" width="120" height="70" rx="10" fill="#eef7f2" stroke="#4f9a80"/><text x="470" y="149" font-weight="700">6 · Session</text><text x="470" y="165" font-size="9">learner's order, reason,</text><text x="470" y="178" font-size="9">prompting, supports</text>
+    <rect x="275" y="125" width="120" height="70" rx="10" fill="#fff7ea" stroke="#d39b3c"/><text x="335" y="149" font-weight="700">7 · Observe</text><text x="335" y="165" font-size="9">teacher notes,</text><text x="335" y="178" font-size="9">kept separate</text>
+    <rect x="140" y="125" width="120" height="70" rx="10" fill="#f1f4f2" stroke="#7d8f89"/><text x="200" y="149" font-weight="700">8 · History</text><text x="200" y="165" font-size="9">every action,</text><text x="200" y="178" font-size="9">for the IEP team</text>
+  </g>
+  <g stroke="#3d6e62" stroke-width="1.8" fill="none">
+    <line x1="125" y1="55" x2="138" y2="55" marker-end="url(#e)"/><line x1="260" y1="55" x2="273" y2="55" marker-end="url(#e)"/><line x1="395" y1="55" x2="408" y2="55" marker-end="url(#e)"/><line x1="530" y1="55" x2="543" y2="55" marker-end="url(#e)"/>
+    <path d="M610,90 L610,160 L532,160" marker-end="url(#e)"/><line x1="410" y1="160" x2="397" y2="160" marker-end="url(#e)"/><line x1="275" y1="160" x2="262" y2="160" marker-end="url(#e)"/>
+    <path d="M470,90 C470,105 360,105 340,92" stroke-dasharray="4 3" marker-end="url(#e)"/>
+  </g>
+  <text x="405" y="112" font-size="9" fill="#3d6e62">re-check after edits</text>
+</svg>
+<figcaption>Figure 5. The teacher journey. Screens: Goals and Activities (steps 1–2), Check (3–5), Practice (6–7), History (8).</figcaption>
+</figure>
+
+<table>
+  <tr><th style="width:5%">#</th><th style="width:17%">Screen</th><th>What the teacher does</th><th style="width:30%">What the system does</th></tr>
+  <tr><td>0</td><td>Login</td><td>Picks a demo account (password <code>strivetrack-demo</code>).</td><td><code>POST /api/auth/login</code> → token <code>demo-&lt;userId&gt;</code> saved in localStorage.</td></tr>
+  <tr><td>1</td><td>Goals</td><td>Searches, filters, creates or edits a goal and its accommodations; archives old ones.</td><td>Validates; if the support set changes, every linked <i>approved</i> activity drops to <span class="pill p-review">needs_review</span>.</td></tr>
+  <tr><td>2</td><td>Activities</td><td>Adds a worksheet linked to a goal, or opens one for checking.</td><td>New activities are always drafts; editing approved content forces re-review.</td></tr>
+  <tr><td>3</td><td>Check</td><td>Picks the activity; reads goal and activity side by side; clicks <b>Run alignment check</b> (~8 s with AI).</td><td>Rules + AI pipeline (§9). Saves a check, marks the activity needs_review, writes history.</td></tr>
+  <tr><td>4</td><td>Check</td><td>Clicks <b>Create a revision draft</b>, reads the AI's rationale, edits text, saves.</td><td>Revision pipeline (§10); every save re-runs the accommodation guard (§11).</td></tr>
+  <tr><td>5</td><td>Check</td><td><b>Approve for practice</b> (confirmation dialog) or <b>Reject with a reason</b>.</td><td>Approval gate (§12); older drafts become superseded; progress bar moves to step 3.</td></tr>
+  <tr><td>6</td><td>Practice</td><td>Shows cards to the learner; optional larger cards, easier reading, read-aloud, thinking-time timer; arranges cards in the learner's order; enters learner code, reasoning, prompting, supports; saves.</td><td>Session record (§13); no score is produced.</td></tr>
+  <tr><td>7</td><td>Practice / Check</td><td>Adds, edits or deletes teacher observations.</td><td>Stored separately from checks; every change is recorded in history.</td></tr>
+  <tr><td>8</td><td>History</td><td>Searches the decision trail.</td><td>Paginated, read-only audit list.</td></tr>
+</table>
+
+<h2 class="page">9. Alignment check pipeline (<code>POST /api/checks</code>)</h2>
+<figure>
+<svg width="680" height="250" viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="f" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3d6e62"/></marker></defs>
+  <g font-size="10" text-anchor="middle">
+    <rect x="5" y="95" width="105" height="56" rx="8" fill="#f1f4f2" stroke="#7d8f89"/><text x="57" y="118" font-weight="700">Load</text><text x="57" y="134" font-size="9">activity + goal;</text><text x="57" y="146" font-size="9">refuse if archived</text>
+    <rect x="140" y="20" width="150" height="70" rx="8" fill="#fdecea" stroke="#c46b5f"/><text x="215" y="42" font-weight="700">AI review (no lock)</text><text x="215" y="58" font-size="9">goal + activity text only</text><text x="215" y="71" font-size="9">→ findings, demand map</text><text x="215" y="84" font-size="9">quotes verified in ai.py</text>
+    <rect x="140" y="155" width="150" height="70" rx="8" fill="#fff7ea" stroke="#d39b3c"/><text x="215" y="177" font-weight="700">Local rules (in lock)</text><text x="215" y="193" font-size="9">numbered / pre-ordered steps</text><text x="215" y="206" font-size="9">supports not stated</text><text x="215" y="219" font-size="9">too short → unsure</text>
+    <rect x="320" y="85" width="150" height="76" rx="8" fill="#f4f1fb" stroke="#8b7cc4"/><text x="395" y="107" font-weight="700">Merge</text><text x="395" y="123" font-size="9">AI used only if content</text><text x="395" y="136" font-size="9">unchanged; drop duplicate</text><text x="395" y="149" font-size="9">and support findings</text>
+    <rect x="500" y="85" width="170" height="76" rx="8" fill="#d5efe2" stroke="#4f9a80"/><text x="585" y="107" font-weight="700">Decide + save</text><text x="585" y="123" font-size="9">result, summary, demand map,</text><text x="585" y="136" font-size="9">fingerprints, mode label;</text><text x="585" y="149" font-size="9">activity → needs_review; audit</text>
+  </g>
+  <g stroke="#3d6e62" stroke-width="1.6" fill="none">
+    <path d="M110,115 C125,90 128,70 138,58" marker-end="url(#f)"/>
+    <path d="M110,132 C125,160 128,180 138,188" marker-end="url(#f)"/>
+    <path d="M290,55 C305,70 310,90 318,105" marker-end="url(#f)"/>
+    <path d="M290,190 C305,175 310,160 318,145" marker-end="url(#f)"/>
+    <line x1="470" y1="123" x2="498" y2="123" marker-end="url(#f)"/>
+  </g>
+</svg>
+<figcaption>Figure 6. The AI call runs outside the database lock so a slow model never blocks other requests; the activity is re-read afterwards.</figcaption>
+</figure>
+<h3>9.1 Exact steps</h3>
+<ol>
+  <li><b>Load and guard.</b> Fetch the activity and its goal. If either is archived → 409 "Restore the archived activity and goal before running a check."</li>
+  <li><b>AI review</b> (only if a key is configured): <code>ai.check(goal, content)</code>. Returns <code>None</code> on any failure. Details in §15.</li>
+  <li><b>Acquire the lock</b> and re-read the activity (it may have changed during the AI call).</li>
+  <li><b>Rule: skill bypass.</b> If the goal's skill mentions <code>plan|sequenc|order|organis|organiz</code> <i>and</i> the content either has a line starting <code>1.</code> or <code>1)</code> or contains one of "in this order", "in the correct order", "Follow these steps", "follow these steps", "already numbered", add a finding: type "Skill bypass", confidence 0.96, evidence = the first numbered line (or the phrase).</li>
+  <li><b>Rule: support not stated.</b> For each goal accommodation not found in the content (case- and spacing-insensitive), add "Support not stated", confidence 0.81, evidence = the first non-blank line of the activity.</li>
+  <li><b>Verbatim filter.</b> Keep only rule findings whose evidence is literally in the content.</li>
+  <li><b>Unclear test.</b> Content with fewer than 12 words, or with no task detail (numbered steps or "Step cards:"/"Task cards:") and fewer than 40 words, is unclear: rule findings are cleared.</li>
+  <li><b>Merge AI findings</b> only if the AI saw exactly the current content. Skip findings duplicating a rule finding (same type and evidence) and any whose type mentions "support" or "accommodation" (supports are the code's job). Add a note if the AI's quotes could not be verified ("1 AI suggestion was removed because…") or if the model didn't respond.</li>
+  <li><b>Result.</b> Any findings → <b>mismatch</b>. Else, unclear and (AI not used or AI also unsure) → <b>unsure</b>. Else → <b>aligned</b>.</li>
+  <li><b>Summary.</b> The AI's summary if the AI's own result matches the final result; otherwise a fixed rule summary.</li>
+  <li><b>Demand map.</b> The cleaned AI map if present; otherwise the rule map (planning and sequencing rows only: "done for learner" if steps are pre-ordered, "learner does" if there are cards or choice words, else "not required").</li>
+  <li><b>Save</b> the check with <code>mode</code>, <code>ai_model</code>, <code>ai_note</code>, and the goal and content fingerprints (§14). If the activity isn't approved, set it to needs_review. Write a "checked" history entry naming the model or "local rules".</li>
+</ol>
+
+<h3>9.2 Executive-function demand map</h3>
+<table>
+  <tr><th>Skill</th><th>Meaning</th></tr>
+  <tr><td>planning</td><td>Deciding what needs to happen to reach the goal.</td></tr>
+  <tr><td>sequencing</td><td>Putting steps in a workable order.</td></tr>
+  <tr><td>task_initiation</td><td>Starting without being walked into it.</td></tr>
+  <tr><td>working_memory</td><td>Holding steps or information in mind.</td></tr>
+  <tr><td>self_monitoring</td><td>Checking one's own work.</td></tr>
+  <tr><td>flexible_thinking</td><td>Adapting when something changes.</td></tr>
+</table>
+<p>For each skill: does the <i>goal</i> target it (yes/no), and does the <i>activity</i> leave it to the learner (<code>learner_does</code>), do it for them (<code>done_for_learner</code>), or not need it (<code>not_required</code>)? A <b>gap</b> is a skill the goal targets that the learner does not do; the UI highlights gap rows in peach and counts them. Unknown skills and values from the AI are discarded.</p>
+
+<h2 class="page">10. Revision drafting pipeline (<code>POST /api/revisions</code>)</h2>
+<ol>
+  <li>Guard: archived goal or activity → 409.</li>
+  <li>If the request has no <code>content</code>, call <code>ai.revise(goal, activity)</code> outside the lock. The model returns JSON <code>{title, instructions, task_cards[3–5], reflection, rationale}</code>. It must be grade-3 reading level, keep the same task and setting, start each card with an emoji picture cue, not number cards, not mention accommodations, and give a new title that doesn't give the plan away. Code validates 3–6 unique non-empty cards and non-empty instructions or returns None.</li>
+  <li>Under the lock, re-read the goal and build <code>Approved supports:</code> followed by each accommodation <b>word for word</b>, added by code, never by the AI.</li>
+  <li><b>Local template</b> (fallback): take numbered lines from the original, or its existing "Step cards" section; otherwise three generic cards. Keep 3 and present them rotated <code>[2nd, 3rd, 1st]</code> so no correct order is shown. Text: title, "Your task: make your own plan for this routine…", step cards, supports, reflection questions.</li>
+  <li><b>AI version</b>: AI title, AI instructions, "Step cards:" with the AI's cards <b>rotated by one</b> (so they never appear in the order the model wrote them), supports, reflection.</li>
+  <li>Version = highest existing version for the activity + 1. Accommodations default to the goal's list.</li>
+  <li>Run the accommodation guard → <span class="pill p-draft">draft</span> or <span class="pill p-blocked">blocked</span>. Save. History: "drafted", with the model name.</li>
+</ol>
+<pre>Plan Your Café Counter Task                         ← AI title
+
+Choose any order for the task cards. Think about    ← AI instructions
+what makes sense to do first, second, and last.
+
+Step cards:                                         ← AI cards, rotated by code
+• 🧽 Wipe the counter
+• 🥤 Place clean cups by the machine
+• 🧼 Gather cleaning supplies
+
+Approved supports:                                  ← added by code, verbatim
+• Visual step cards
+• Extra processing time
+
+Reflection: Did your plan work well? What helped you decide the order?</pre>
+<p><b>Editing a draft</b> (<code>PATCH /api/revisions/{id}</code>) is allowed only for draft or blocked revisions. Each save re-runs the guard and writes an "edited draft" history entry stating whether supports are complete or which are missing. <b>Deleting a draft</b> writes "deleted draft".</p>
+
+<h2>11. The accommodation guard</h2>
+<p>Function <code>missing_supports(goal, content, accommodations)</code> returns every goal accommodation that is missing either from the revision text or from the revision's own accommodation list. Matching uses <code>normalize()</code>: whitespace collapsed to single spaces and Unicode case-folded, so "extra  processing TIME" matches "Extra processing time".</p>
+<ul>
+  <li>Applied on create, on every save, and again at approval time.</li>
+  <li>Any missing support → status <b>blocked</b>, <code>blocked_reason</code> "Restore the approved accommodation(s): …". Approval returns 409 with that reason.</li>
+  <li>Applied again when opening a practice session. If the goal's supports changed after approval, practice is refused until a new revision is approved.</li>
+  <li>The UI shows a live checklist of supports (✓ or ⚠) while the teacher types, but the backend has the final say.</li>
+</ul>
+
+<h2>12. Approval, superseding, and the practice gate</h2>
+<h3>Approve (<code>POST /api/revisions/{id}/approve</code>)</h3>
+<ol>
+  <li>Revision must be mutable (not approved, rejected or superseded) → otherwise 409.</li>
+  <li>Goal and activity must not be archived.</li>
+  <li>Guard re-run; blocked → 409.</li>
+  <li>Revision → approved; activity → approved.</li>
+  <li>Every <i>older</i> draft or blocked revision of the same activity → <span class="pill p-superseded">superseded</span> with <code>superseded_by</code> = this version.</li>
+  <li>History: "approved … All approved accommodations retained. Older draft v1 was retired so it cannot be approved by mistake."</li>
+</ol>
+<h3>Reject (<code>POST /api/revisions/{id}/reject</code>)</h3>
+<p>Requires a reason (3–1500 chars). Revision → rejected with <code>rejection_reason</code>; the reason is the history detail.</p>
+<h3>Practice gate (<code>GET /api/try/{activityId}</code>)</h3>
+<p>Opens only if: the activity is approved; at least one approved revision exists (the highest version is used); the goal is not archived; and that revision still contains every current goal support. Then the backend extracts the step cards: text after a "Step cards:" / "Task cards:" marker, bullets and numbers stripped, stopping at supports or reflection lines, skipping lines that equal an accommodation, up to 6 cards. Fewer than 2 found → three generic steps.</p>
+
+<h2>13. Practice session record (<code>POST /api/try/{id}/submit</code>)</h2>
+<table>
+  <tr><th style="width:22%">Field</th><th>Rule</th></tr>
+  <tr><td>ordered_steps</td><td>2–20 items; must be exactly the approved cards, each once (multiset comparison), in the learner's order. Otherwise 422.</td></tr>
+  <tr><td>learner_label</td><td>1–40 chars. The UI requires it and says "Initials or a code, never a full name."</td></tr>
+  <tr><td>reasoning</td><td>Up to 2000 chars: how the learner explained the order.</td></tr>
+  <tr><td>prompting</td><td>independent · one_prompt · several_prompts · modeled.</td></tr>
+  <tr><td>supports_used</td><td>Each must match an approved accommodation (normalized); stored in its canonical spelling. Otherwise 422.</td></tr>
+</table>
+<p>The session stores the revision id and version used and who recorded it. History: "session recorded … No mastery judgment was made." Sessions are listed under the practice screen (<code>GET /api/sessions?activity_id=…</code>).</p>
+<h3>Learner-facing aids on the practice screen</h3>
+<ul>
+  <li><b>Larger cards</b> and <b>Easier reading</b> (Verdana/Tahoma font, letter spacing 0.12em, word spacing 0.16em, line height 1.8, following WCAG 1.4.12). Both are remembered in localStorage.</li>
+  <li><b>Read cards aloud</b>: browser speech synthesis with a local English voice at rate 0.85; if none exists, the teacher is told to use the device's tools.</li>
+  <li><b>Thinking time</b>: 1, 2 or 3-minute visual countdown bar with pause, resume and reset. If the goal has a time-related support (matches "time", "pause" or "wait"), starting the timer ticks that support as used. Screen readers hear a message only when time is up.</li>
+  <li>Card order is changed with up/down buttons (keyboard accessible); each move is announced to screen readers.</li>
+</ul>
+
+<h2 class="page">14. Out-of-date check detection</h2>
+<p>When a check is saved, two short fingerprints are stored:</p>
+<pre>goal_fingerprint    = sha256(normalize(skill + "\n" + criteria + "\n" + sorted accommodations))[:16]
+content_fingerprint = sha256(normalize(activity content))[:16]</pre>
+<p>Each time checks are read (<code>GET /api/checks</code>, <code>GET /api/checks/{id}</code>), the backend recomputes both from the current goal and activity. If either differs, it adds <code>stale: true</code> and <code>stale_reasons: ["goal", "activity"]</code>. The Check screen then shows a yellow notice: "This check is out of date: the goal and activity changed after it ran. Run the check again before you rely on it." Changes to a title, due date or colour do not make a check stale; only meaning-bearing text does. Checks without fingerprints (created before this feature, until a reset) are treated as current.</p>
+
+<h2>15. AI module internals (<code>backend/app/ai.py</code>)</h2>
+<h3>15.1 Configuration</h3>
+<table>
+  <tr><th>Variable</th><th>Default</th><th>Notes</th></tr>
+  <tr><td><code>STRIVETRACK_AI_API_KEY</code></td><td>(empty)</td><td>Empty = AI off; StriveTrack runs fully offline on local rules.</td></tr>
+  <tr><td><code>STRIVETRACK_AI_BASE_URL</code></td><td>https://openai.rc.asu.edu/v1</td><td>Any OpenAI-compatible server.</td></tr>
+  <tr><td><code>STRIVETRACK_AI_MODEL</code></td><td>qwen3-30b-a3b</td><td>~8 s per check in testing (muse-glimmer-30b took ~46 s).</td></tr>
+</table>
+<p><code>load_env_file()</code> reads <code>KEY=VALUE</code> lines, ignores comments, strips quotes, and uses <code>setdefault</code> so the shell wins. Tests force the key empty in <code>conftest.py</code>.</p>
+<h3>15.2 The call</h3>
+<p><code>_chat(system, user)</code> posts <code>{model, temperature: 0.2, messages:[system, user]}</code> to <code>/chat/completions</code> with a Bearer key and a 60-second timeout. Any HTTP error, timeout, or malformed response returns <code>None</code>. <code>_parse_json()</code> removes <code>&lt;think&gt;…&lt;/think&gt;</code> reasoning blocks and ```json fences, then parses the outermost <code>{…}</code>.</p>
+<h3>15.3 Check prompt (summary)</h3>
+<p>Explains executive-function "bypasses" (pre-ordered steps, choice already made, answers or completed example given, working-memory overload), says accommodations are handled separately, requires a word-for-word evidence quote, forbids diagnosing or judging the learner, caps findings at 4, allows "unsure", and asks for the six-skill demand map in fixed JSON.</p>
+<h3>15.4 Verification of AI output</h3>
+<ul>
+  <li><b>Quotes:</b> <code>locate_quote()</code> builds a regex of the quote's words joined by <code>\s+</code>, case-insensitive, needing at least 2 words. If found, the <i>exact passage from the activity</i> replaces the AI's text; if not, the finding is dropped and counted.</li>
+  <li><b>Confidence</b> for AI findings is fixed at 0.7 (rules: 0.96 and 0.81); the type is capped at 60 chars and the explanation at 600.</li>
+  <li><b>Demand map:</b> only the six known skills and three known values survive; <code>goal_targets</code> must be literally <code>true</code>.</li>
+  <li><b>Revision:</b> 3–6 unique cards, non-empty instructions; title whitespace-collapsed and ≤80 chars (falls back to the activity title).</li>
+</ul>
+<div class="key"><b>Boundary:</b> the AI never sees learner codes, sessions, observations, or user names, and never writes accommodations, approves anything, or changes status. It only proposes text, and code decides what is kept.</div>
+
+<h2>16. Backend internals</h2>
+<h3>16.1 Store and concurrency</h3>
+<ul>
+  <li><code>Store.connect()</code> opens a fresh SQLite connection per operation with <code>timeout=15</code> and <code>PRAGMA busy_timeout=15000</code>, committing on success.</li>
+  <li>Methods: <code>initialize, reset, all(entity), get(entity, id)</code> (404 "Goal not found." etc.)<code>, put, delete</code>.</li>
+  <li>A process-wide re-entrant lock (<code>threading.RLock</code>) wraps every read-modify-write sequence (updates, approvals, checks), so two requests can't interleave. AI calls happen <i>before</i> taking the lock.</li>
+  <li>Filtering, search and sorting happen in Python in <code>paginated()</code>: case-insensitive text search across title, content, skill, criteria, note, context, actor, action, target and detail; filters for status, category, goal_id and activity_id; sort by updated_at, title, created_at or due_date; page size 1–100 (default 12).</li>
+</ul>
+<h3>16.2 Authentication (simulated)</h3>
+<p>Login checks the email (case-insensitive) and the shared demo password and returns <code>token = "demo-" + user.id</code>. Every protected endpoint uses <code>current_user()</code>, which requires <code>Authorization: Bearer demo-…</code> and loads the user (401 otherwise). Public: <code>/api/health</code>, <code>/api/demo-users</code>, <code>/api/auth/login</code>. The frontend stores the token under <code>strivetrack-token</code>; any 401 fires a <code>strivetrack:unauthorized</code> event that signs the teacher out and clears the query cache.</p>
+<div class="note">Tokens are not signed, so this is not real security. That is acceptable for a local MVP with synthetic data; school single sign-on is on the roadmap.</div>
+<h3>16.3 Error contract</h3>
+<table>
+  <tr><th>Code</th><th>When</th><th>Body</th></tr>
+  <tr><td>401</td><td>Missing or unknown token; wrong login</td><td><code>{"detail": "Please sign in with a demo account."}</code></td></tr>
+  <tr><td>404</td><td>Unknown id</td><td><code>{"detail": "Activity not found."}</code></td></tr>
+  <tr><td>409</td><td>A business rule would be broken (approval, history, archived, linked records)</td><td><code>{"detail": "&lt;plain-language explanation&gt;"}</code></td></tr>
+  <tr><td>422</td><td>Validation failed</td><td><code>{"detail": "Please check the highlighted fields.", "errors": [{"field", "message"}]}</code>. The UI shows the per-field messages.</td></tr>
+</table>
+<h3>16.4 Relationship protection</h3>
+<ul>
+  <li>Deleting a goal with linked activities → 409 (archive instead).</li>
+  <li>Deleting an activity that has an approved or rejected revision → 409. Otherwise its revisions, checks and observations are deleted with it.</li>
+  <li>Changing an activity's goal after revisions exist → 409.</li>
+  <li>Creating an activity as "approved", or PATCHing it to approved → 409.</li>
+</ul>
+
+<h2 class="page">17. Frontend architecture</h2>
+<h3>17.1 Composition</h3>
+<pre>main.tsx
+ └─ QueryClientProvider → BrowserRouter → AuthProvider → App
+     App.tsx  (routes; "Reset demo workspace" confirmation)
+      ├─ /login                → Login          (demo account picker + form)
+      └─ Layout (sidebar on desktop, bottom nav on mobile, theme toggle, account menu)
+          ├─ /                 → Dashboard      (stats, weekly chart, recent items, Why StriveTrack personas)
+          ├─ /goals            → Library kind="goals"
+          ├─ /activities       → Library kind="activities"   (?status=…, ?edit=&lt;id&gt; opens the editor)
+          ├─ /check            → CheckWorkspace (?activity=&lt;id&gt;)
+          ├─ /try/:activityId  → TryActivity    (practice session record)
+          └─ /history          → History</pre>
+<h3>17.2 Data layer</h3>
+<ul>
+  <li><code>api&lt;T&gt;(path, init)</code> adds the JSON header and Bearer token, turns non-OK responses into <code>ApiError(message, status)</code>, and prefers per-field validation messages.</li>
+  <li>Query keys, for example: <code>['activity-options']</code>, <code>['activity', id]</code>, <code>['goal', id]</code>, <code>['checks', id]</code>, <code>['revisions', id]</code>, <code>['ai-status']</code> (cached 60 s), <code>['try', id]</code>, <code>['sessions', id]</code>, <code>['observations', id]</code>, <code>[kind, {q, status, sort, page}]</code>.</li>
+  <li>After each mutation (check, draft, save, approve, reject, delete), affected queries are invalidated so every panel refreshes from the backend. Archiving in the library is optimistic and rolls back on error.</li>
+  <li>Dates are shown in the America/Phoenix time zone.</li>
+</ul>
+<h3>17.3 Check workspace in detail</h3>
+<ul>
+  <li><b>Progress bar</b>: step 1 → step 2 once the activity has a check → step 3 once it's approved; completed steps show a tick, and the current step has <code>aria-current="step"</code>.</li>
+  <li><b>AI status note</b>: "AI-assisted (qwen3-30b-a3b) · quotes verified · supports enforced in code · no learner data sent", or "Local rules", with a neutral loading state.</li>
+  <li><b>Side-by-side</b> goal card (skill, success criteria, supports) and original activity card with an "Edit this activity" deep link.</li>
+  <li><b>Check result</b>: result badge and summary, AI note, out-of-date notice, demand map table, finding cards with quoted evidence and a source chip ("AI · quote verified" or "Local rule"), mode and date footer.</li>
+  <li><b>Revision editor</b>: version picker, AI rationale banner, textarea (read-only for final states), save button, blocked reason; the approval card shows the live support checklist, Approve (disabled while there are unsaved changes, missing supports or a blocked status), Reject, Delete, or "Run a practice session".</li>
+  <li><b>Teacher observations</b> panel below.</li>
+</ul>
+<h3>17.4 Accessibility and inclusion</h3>
+<p>Skip link, visible keyboard focus, labelled controls, live regions for announcements, confirmation dialogs with clear button wording, light and dark themes, reduced-motion support, responsive layouts from 320 px to 1440 px, locally bundled fonts, and the learner aids in §13.</p>
+
+<h2>18. Dashboard metrics (<code>GET /api/dashboard</code>)</h2>
+<table>
+  <tr><th>Metric</th><th>Computation</th></tr>
+  <tr><td>Active goals</td><td>Goals with status active.</td></tr>
+  <tr><td>Activities / Needs review / Approved</td><td>Counts by activity status.</td></tr>
+  <tr><td>Supports kept (%)</td><td>For each activity, take its latest approved revision; the percentage of those that still state <i>every current</i> goal support. Drops below 100% when a goal gains a support that approved work doesn't yet include.</td></tr>
+  <tr><td>Weekly chart</td><td>7 days ending on the newest check date: checks created per day and revisions approved per day. Real timestamps only, never invented counts.</td></tr>
+  <tr><td>Recent</td><td>5 most recently updated activities and 5 latest history entries.</td></tr>
+</table>
+
+<h2>19. History (audit trail)</h2>
+<p>Every state-changing endpoint writes one entry <code>{actor, action, target, target_id, version, detail, created_at}</code>. The API offers no way to edit or delete entries.</p>
+<table>
+  <tr><th style="width:22%">Action</th><th>Written by</th></tr>
+  <tr><td>created / updated / deleted</td><td>Goal and activity create, edit, delete.</td></tr>
+  <tr><td>checked</td><td>Alignment check (names the AI model or "local rules" and the result).</td></tr>
+  <tr><td>drafted</td><td>Revision created (AI or template).</td></tr>
+  <tr><td>edited draft</td><td>Draft saved; states whether supports are complete or which are missing.</td></tr>
+  <tr><td>deleted draft</td><td>Draft deleted.</td></tr>
+  <tr><td>approved</td><td>Revision approved; lists retired older drafts.</td></tr>
+  <tr><td>rejected</td><td>Revision rejected; detail = the teacher's reason.</td></tr>
+  <tr><td>observed / edited observation / deleted observation</td><td>Teacher notes (deletion keeps the first 80 characters of the note).</td></tr>
+  <tr><td>session recorded</td><td>Practice session: learner code, chosen order, whether reasoning was noted, "No mastery judgment was made."</td></tr>
+</table>
+
+<h2 class="page">20. API reference</h2>
+<p>Base <code>http://127.0.0.1:8001</code> (or <code>/api</code> through Vite). Interactive docs at <code>/docs</code>. All list endpoints accept <code>q, status, category, goal_id, activity_id, sort, order, page, page_size</code> and return <code>{items, total, page, page_size, pages}</code>.</p>
+<table>
+  <tr><th style="width:9%">Method</th><th style="width:31%">Path</th><th>Purpose</th></tr>
+  <tr><td>GET</td><td>/api/health</td><td>Liveness: <code>{"status":"ok","mode":"local-demo"}</code> (public)</td></tr>
+  <tr><td>GET</td><td>/api/demo-users</td><td>Demo accounts for the login screen (public)</td></tr>
+  <tr><td>POST</td><td>/api/auth/login</td><td>Email + password → token and user (public)</td></tr>
+  <tr><td>GET</td><td>/api/auth/me</td><td>Current user from the token</td></tr>
+  <tr><td>GET</td><td>/api/ai/status</td><td><code>{enabled, model}</code></td></tr>
+  <tr><td>POST</td><td>/api/reset</td><td>Restore the seed (discards changes)</td></tr>
+  <tr><td>GET</td><td>/api/dashboard</td><td>Stats, weekly chart, recent items, user</td></tr>
+  <tr><td>GET · POST</td><td>/api/goals</td><td>List · create</td></tr>
+  <tr><td>GET · PATCH · DELETE</td><td>/api/goals/{id}</td><td>Read · edit (support change → re-review) · delete (409 if linked)</td></tr>
+  <tr><td>GET · POST</td><td>/api/activities</td><td>List · create (never approved)</td></tr>
+  <tr><td>GET · PATCH · DELETE</td><td>/api/activities/{id}</td><td>Read · edit · delete (409 after a decision)</td></tr>
+  <tr><td>GET · POST</td><td>/api/checks</td><td>List with staleness · run a check</td></tr>
+  <tr><td>GET</td><td>/api/checks/{id}</td><td>One check with staleness</td></tr>
+  <tr><td>GET · POST</td><td>/api/revisions</td><td>List · create draft (AI or template, or teacher-supplied content)</td></tr>
+  <tr><td>GET · PATCH · DELETE</td><td>/api/revisions/{id}</td><td>Read · save draft (guard re-run) · delete draft</td></tr>
+  <tr><td>POST</td><td>/api/revisions/{id}/approve</td><td>Approve; supersede older drafts</td></tr>
+  <tr><td>POST</td><td>/api/revisions/{id}/reject</td><td>Reject with <code>{reason}</code></td></tr>
+  <tr><td>GET · POST</td><td>/api/observations</td><td>List · create</td></tr>
+  <tr><td>GET · PATCH · DELETE</td><td>/api/observations/{id}</td><td>Read · edit · delete (all recorded in history)</td></tr>
+  <tr><td>GET</td><td>/api/try/{activityId}</td><td>Practice payload: activity, approved revision, goal, steps</td></tr>
+  <tr><td>POST</td><td>/api/try/{activityId}/submit</td><td>Save a practice session</td></tr>
+  <tr><td>GET</td><td>/api/sessions</td><td>List practice sessions</td></tr>
+  <tr><td>GET</td><td>/api/audit</td><td>History</td></tr>
+</table>
+
+<h2>21. Validation rules</h2>
+<p>All request bodies forbid unknown fields and trim whitespace.</p>
+<table>
+  <tr><th style="width:18%">Body</th><th>Limits</th></tr>
+  <tr><td>Goal</td><td>title 3–140 · skill_description 10–5000 · success_criteria 5–2500 · accommodations ≤20, each 1–500, unique · category 1–80 · status active|archived · due_date (default 2026-11-12)</td></tr>
+  <tr><td>Activity</td><td>goal_id must exist · title 3–140 · content 10–20000 · status draft|needs_review|approved|archived · color peach|mint|lavender|lemon</td></tr>
+  <tr><td>Revision</td><td>activity_id · optional content 10–20000 · optional accommodations ≤20</td></tr>
+  <tr><td>Observation</td><td>note 3–5000 · context ≤1000</td></tr>
+  <tr><td>Reject</td><td>reason 3–1500</td></tr>
+  <tr><td>Session</td><td>see §13</td></tr>
+  <tr><td>Login</td><td>email 3–160 · password 1–128</td></tr>
+</table>
+
+<h2>22. Privacy, safety, and responsible AI</h2>
+<table>
+  <tr><th style="width:28%">Risk</th><th>Control in StriveTrack</th></tr>
+  <tr><td>AI invents evidence</td><td>Every quote is located in the activity; unverifiable findings are removed and the teacher is told how many.</td></tr>
+  <tr><td>AI drops an accommodation</td><td>The AI never writes supports; code inserts them verbatim, and approval is blocked if any is missing.</td></tr>
+  <tr><td>AI shows the "right" order</td><td>Cards are unnumbered and rotated by code before display.</td></tr>
+  <tr><td>Over-trust in AI</td><td>Every AI output is labelled with the model name; findings show their source; the teacher must approve; approval is a confirmation dialog.</td></tr>
+  <tr><td>AI unavailable</td><td>Local rules always run; a note says the model didn't respond.</td></tr>
+  <tr><td>Student privacy</td><td>Teacher-only app; learner codes not names; only goal and activity text is sent to the model; sessions and notes stay local; synthetic data.</td></tr>
+  <tr><td>Labelling learners</td><td>Prompts forbid diagnosing or judging; the app never scores mastery.</td></tr>
+  <tr><td>Relying on stale results</td><td>Fingerprint-based out-of-date flag (§14).</td></tr>
+  <tr><td>Accountability</td><td>Append-only history of every decision, edit and session.</td></tr>
+  <tr><td>Secrets</td><td>Key lives only in git-ignored <code>.env</code> on the server; never sent to the browser.</td></tr>
+</table>
+
+<h2>23. Testing and verification</h2>
+<ul>
+  <li><b>21 backend tests</b> (<code>npm run test:backend</code>), each on a fresh temporary SQLite file:
+    <ul>
+      <li><i>test_api.py</i>: login and 401s; seed counts, filters, sorting, pagination; goal/activity/observation CRUD and relationship guards; validation errors; verbatim evidence and "unsure"; revision guard, approval history and practice gate; support change revoking access; unchanged supports keeping approval; reject and delete flows; dashboard and reset; SQLite persistence across app restarts.</li>
+      <li><i>test_ai.py</i> (fake model through <code>httpx.MockTransport</code>): quote location; invented quotes dropped; AI support findings ignored; demand-map cleaning; rules-only demand map; AI revision can't drop supports, cards rotated, AI title used; unreachable model falls back; case/spacing-insensitive supports; session recording; checks going stale on goal or activity change; older drafts superseded and history recording draft and observation edits; dashboard support share.</li>
+    </ul></li>
+  <li><b><code>npm run check</code></b>: ESLint (clean) + TypeScript + production build.</li>
+  <li><b>Live checks</b> with the real model: check ≈ 8 s and correctly flagged "Copy Sam's plan…" with verified quotes; AI revision with a new title; approval retired v1; progress bar, timer, easier reading and edit deep link verified in the browser.</li>
+</ul>
+
+<h2>24. Known limits and roadmap</h2>
+<p><b>Limits:</b> the checker is not a validated educational assessment; authentication is simulated; one SQLite file means one school and one machine; read-aloud depends on the browser's voices; English only.</p>
+<table>
+  <tr><th style="width:26%">Stage</th><th>Change</th></tr>
+  <tr><td>1. Teacher pilot</td><td>5–10 teachers for one semester; measure minutes saved, AI accept/edit/reject rates, and bypasses caught before practice.</td></tr>
+  <tr><td>2. Real sign-in</td><td>School SSO, signed sessions, per-school data separation, roles.</td></tr>
+  <tr><td>3. Student-data privacy</td><td>FERPA and state agreements, district-hosted model, retention limits.</td></tr>
+  <tr><td>4. IEP integration</td><td>Import goals and accommodations; export session evidence for IEP meetings.</td></tr>
+  <tr><td>5. Reach</td><td>More executive-function and transition skills, Spanish cards, picture-symbol sets.</td></tr>
+</table>
+<p class="small">Prepared from the StriveTrack source code as of November 5, 2026. Built with AI coding assistance; reviewed and run locally.</p>
+
+</body>
+</html>
